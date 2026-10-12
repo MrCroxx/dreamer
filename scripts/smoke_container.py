@@ -109,6 +109,10 @@ def main():
         ).strip()
         assert uid == "10001", uid
         subprocess.run(["docker", "restart", name], check=True, capture_output=True)
+        port = subprocess.check_output(
+            ["docker", "port", name, "8000"], text=True
+        ).strip()
+        base = "http://" + port
         ready()
         restored = json.loads(request(endpoint))
         assert restored["state"] == "preview"
