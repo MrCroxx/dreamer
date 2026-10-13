@@ -20,7 +20,7 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { api, download, token } from "./api";
+import { api, ApiError, download, token } from "./api";
 import { activeStates, stateLabels, type Job, type Status } from "./types";
 import { Viewer } from "./Viewer";
 
@@ -70,6 +70,7 @@ export function App() {
   const [confirm, setConfirm] = useState<"slice" | "print" | null>(null);
   const [plateConfirmed, setPlateConfirmed] = useState(false);
   const [apiToken, setApiToken] = useState(token());
+  const [requiresToken, setRequiresToken] = useState(false);
   const [tab, setTab] = useState<"details" | "history" | "cad">("details");
   const imageInput = useRef<HTMLInputElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
@@ -83,9 +84,11 @@ export function App() {
         api<Job[]>("/jobs"),
       ]);
       setStatus(nextStatus);
+      setRequiresToken(nextStatus.auth_required);
       setJobs(nextJobs);
       setConnectionError("");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401) setRequiresToken(true);
       setConnectionError((err as Error).message);
     }
   }, []);
@@ -889,26 +892,37 @@ export function App() {
             connection has been verified. See README.md for setup and printer
             compatibility.
           </p>
-          <label className="token-label" htmlFor="access-token">
-            Workspace access token (optional)
-          </label>
-          <input
-            id="access-token"
-            type="password"
-            value={apiToken}
-            onChange={(event) => setApiToken(event.target.value)}
-            placeholder="Only if DREAMER_API_TOKEN is configured"
-          />
-          <button
-            className="primary modal-primary"
-            onClick={() => {
-              sessionStorage.setItem("dreamer-token", apiToken);
-              void refresh();
-              setSettingsOpen(false);
-            }}
-          >
-            Save & reconnect <ArrowRight size={16} />
-          </button>
+          {requiresToken ? (
+            <>
+              <label className="token-label" htmlFor="access-token">
+                Workspace access token
+              </label>
+              <input
+                id="access-token"
+                type="password"
+                value={apiToken}
+                onChange={(event) => setApiToken(event.target.value)}
+                placeholder="Enter the workspace access token"
+              />
+              <button
+                className="primary modal-primary"
+                onClick={() => {
+                  sessionStorage.setItem("dreamer-token", apiToken);
+                  void refresh();
+                  setSettingsOpen(false);
+                }}
+              >
+                Save & reconnect <ArrowRight size={16} />
+              </button>
+            </>
+          ) : (
+            <button
+              className="primary modal-primary"
+              onClick={() => setSettingsOpen(false)}
+            >
+              Done
+            </button>
+          )}
         </Modal>
       )}
       {helpOpen && (

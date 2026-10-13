@@ -35,6 +35,7 @@ export type Job = {
   slice_sha256: string | null;
 };
 export type Status = {
+  auth_required: boolean;
   llm_ready: boolean;
   model: string;
   slicer_ready: boolean;

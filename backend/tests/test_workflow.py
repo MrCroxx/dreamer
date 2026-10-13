@@ -156,6 +156,10 @@ def test_atomic_dispatch_and_restart_recovery(tmp_path):
 
 
 def test_api_auth_and_origin_guard(settings):
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        assert response.json()["auth_required"] is False
     settings.api_token = "test-secret"
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/status").status_code == 401
@@ -164,6 +168,7 @@ def test_api_auth_and_origin_guard(settings):
             "/api/status", headers={"Authorization": "Bearer test-secret"}
         )
         assert response.status_code == 200
+        assert response.json()["auth_required"] is True
         assert "test-secret" not in response.text
         assert (
             client.post(

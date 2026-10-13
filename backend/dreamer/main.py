@@ -82,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/status")
     async def status():
         return {
+            "auth_required": bool(settings.api_token),
             "llm_ready": bool(settings.llm_api_key and settings.llm_model),
             "model": settings.llm_model or "Not configured",
             "slicer_ready": printer.slicer_ready(settings),

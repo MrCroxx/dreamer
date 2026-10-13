@@ -1,3 +1,12 @@
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 export function token() {
   return sessionStorage.getItem("dreamer-token") || "";
 }
@@ -16,12 +25,13 @@ export async function api<T>(path: string, body?: unknown): Promise<T> {
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
     const detail = data.detail;
-    throw new Error(
+    throw new ApiError(
       typeof detail === "string"
         ? detail
         : Array.isArray(detail)
           ? detail.map((d: { msg: string }) => d.msg).join("; ")
           : `Request failed (${response.status})`,
+      response.status,
     );
   }
   return response.json();
