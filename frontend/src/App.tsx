@@ -274,25 +274,24 @@ export function App() {
           )}
         </div>
         <div className="sidebar-bottom">
-          <div className="printer-card">
-            <div className="printer-symbol">
+          <button
+            type="button"
+            className="printer-card"
+            aria-label="Printer configuration"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <span className="printer-symbol">
               <Printer size={24} strokeWidth={1.3} />
-            </div>
-            <div>
+            </span>
+            <span>
               <strong>Bambu Lab A1 mini</strong>
-              <span>
+              <span className="printer-status">
                 <i className={`dot ${status?.print_ready ? "green" : ""}`} />
                 {status?.print_ready ? "Dispatch configured" : "Not connected"}
               </span>
-            </div>
-            <button
-              title="Printer configuration"
-              aria-label="Printer configuration"
-              onClick={() => setSettingsOpen(true)}
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
+            </span>
+            <ChevronRight className="printer-chevron" size={16} />
+          </button>
           <button
             className="sidebar-link"
             onClick={() => setSettingsOpen(true)}
@@ -477,7 +476,12 @@ export function App() {
                 accept="image/png,image/jpeg,image/webp"
                 onChange={(event) => void upload(event.target.files)}
               />
-              <div className="model-select">
+              <button
+                type="button"
+                className="model-select"
+                aria-label="Configure model"
+                onClick={() => setSettingsOpen(true)}
+              >
                 <span className="model-icon">
                   <WandSparkles size={14} />
                 </span>
@@ -488,13 +492,8 @@ export function App() {
                       ? status.model
                       : "Connect a model to get started"}
                 </span>
-                <button
-                  aria-label="Configure model"
-                  onClick={() => setSettingsOpen(true)}
-                >
-                  <ChevronDown size={13} />
-                </button>
-              </div>
+                <ChevronDown className="model-chevron" size={13} />
+              </button>
               <button
                 className="primary generate-button"
                 disabled={

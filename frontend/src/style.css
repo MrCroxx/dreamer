@@ -233,6 +233,8 @@ h3 {
 }
 .printer-card {
   display: flex;
+  width: 100%;
+  text-align: left;
   gap: 10px;
   align-items: center;
   border: 1px solid #dddfd2;
@@ -249,7 +251,7 @@ h3 {
   font-weight: 600;
   display: block;
 }
-.printer-card span {
+.printer-status {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -257,9 +259,9 @@ h3 {
   color: #969c89;
   margin-top: 6px;
 }
-.printer-card button {
+.printer-chevron {
   margin-left: auto;
-  padding: 0;
+  flex-shrink: 0;
   color: #909680;
 }
 .dot {
@@ -543,6 +545,8 @@ h1 > span {
 }
 .model-select {
   display: flex;
+  width: 100%;
+  text-align: left;
   align-items: center;
   gap: 6px;
   font-size: 9px;
@@ -552,9 +556,8 @@ h1 > span {
 .model-icon {
   display: flex;
 }
-.model-select > button {
+.model-chevron {
   margin-left: auto;
-  padding: 0;
   color: #8c947d;
 }
 .primary {
