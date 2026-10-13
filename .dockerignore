@@ -5,6 +5,8 @@
 !backend/
 !backend/dreamer/
 !backend/dreamer/*.py
+!backend/dreamer/certs/
+!backend/dreamer/certs/*.pem
 !frontend/
 !frontend/package.json
 !frontend/package-lock.json
@@ -17,6 +19,7 @@
 !frontend/src/**
 !scripts/
 !scripts/resolve_dispatch.py
+!scripts/bambu-studio-headless
 **/node_modules
 **/dist
 **/test-results

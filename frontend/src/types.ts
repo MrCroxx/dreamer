@@ -39,6 +39,7 @@ export type Status = {
   llm_ready: boolean;
   model: string;
   slicer_ready: boolean;
+  slicing_presets: string[];
   print_ready: boolean;
   printer: string;
   build_volume: number[];

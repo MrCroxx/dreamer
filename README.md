@@ -21,7 +21,8 @@ Without an LLM key, select **Try demo**, then **Build demo model**. The three fi
 
 ## Docker deployment
 
-The multi-stage image contains the compiled frontend, API, and CadQuery runtime.
+The multi-stage image contains the compiled frontend, API, CadQuery runtime,
+and the official Bambu Studio 2.8.2.61 Linux CLI, verified against a pinned SHA-256.
 It runs as UID/GID `10001:10001`, listens on container port 8000, and stores all
 durable data under `/data`. The supplied Compose file supports a read-only root
 filesystem, writable temporary storage, a persistent named volume, resource
@@ -47,7 +48,8 @@ service name. Never bake credentials or `.env` into the image.
 
 The published image is available at `ghcr.io/mrcroxx/dreamer`. CI tests the
 application, builds a `linux/amd64` image, and exercises real CAD generation,
-artifact downloads, authentication, and persistence across a container restart.
+A1 mini slicing, artifact downloads, authentication, disabled dispatch, and
+persistence across a container restart. Tests never connect to a printer.
 Push builds publish the tested image as `sha-<full-commit>`; only the `main`
 branch updates `latest`. Pull requests build and test without publishing. Other
 architectures are not currently validated by CI.
@@ -66,13 +68,20 @@ against the same data directory at the same time. A new named volume starts with
 an empty workspace; copying existing data requires stopping writers and copying
 the database and artifact directories together.
 
-The base image does **not** include Bambu Studio or the community dispatch CLI.
-For slicing and printing, build a derived image with compatible Linux binaries
-and runtime libraries, then mount your flattened profiles and CLI credentials
-read-only and configure their container paths. Merely installing tools on the
-Docker host does not make them available inside the container. Do not mount the
-Docker socket or enable privileged mode. Printing remains disabled until the
-tools and actual device configuration are verified.
+The image includes flattened official presets for **A1 mini, 0.4 mm nozzle,
+0.20 mm Standard, Generic PLA, Textured PEI Plate** under `/opt/dreamer-profiles`.
+These are explicit starter settings for slicing, not detected hardware or material.
+Verify them against the physical printer before enabling dispatch. The Compose
+file supplies the container paths even when the native `.env` example has empty
+profile paths. Custom presets can be mounted read-only with their paths configured
+in the environment. Bambu Studio runs under Xvfb without a cloud login or network
+plugin. The application never contacts a printer at startup or from `/api/status`.
+
+The bundled direct LAN adapter is disabled by default. The optional community
+dispatch CLI must still be installed separately. Neither path requires a Docker
+socket or privileged mode. Bambu Studio is third-party software distributed under
+AGPL-3.0; its corresponding source and license are available at the pinned
+[upstream release](https://github.com/bambulab/BambuStudio/tree/v02.08.02.61).
 
 To test an image without any provider or printer credentials:
 
@@ -122,13 +131,73 @@ DREAMER_BED_TYPE=Textured PEI Plate
 DREAMER_BUILD_VOLUME=[180,180,180]
 ```
 
-Use presets matching your actual **A1 mini, nozzle diameter, build plate, and material**. The raw preset fragments shipped in Bambu Studio's resources are not full presets: inheritance must be resolved. Files containing nonempty `inherits` or `include` fields are rejected. No guessed temperatures, nozzle sizes, or material settings are substituted. Full presets and machine start/end G-code remain the operator's configuration responsibility.
+Use presets matching your actual **A1 mini, nozzle diameter, build plate, and material**. The raw preset fragments shipped in Bambu Studio's resources are not full presets: inheritance and included G-code templates must be resolved. Files containing nonempty `inherits` or `include` fields are rejected. The image resolves its starter presets at build time. To create different presets from an installed release:
+
+```sh
+PYTHONPATH=backend uv run python -m dreamer.profiles /path/to/resources/profiles/BBL ./profiles \
+  --machine 'Bambu Lab A1 mini 0.4 nozzle' \
+  --process '0.20mm Standard @BBL A1M' \
+  --filament 'Generic PLA @BBL A1M'
+```
+
+No temperature or G-code values are invented by the resolver. It preserves the
+official preset inheritance, includes, and leaf overrides, and fails on missing
+parents or cycles. Review the resulting presets before use.
 
 The integration follows [Bambu Studio's official CLI contract](https://github.com/bambulab/BambuStudio/wiki/Command-Line-Usage), invoking `--load-settings`, `--load-filaments`, `--curr-bed-type`, `--arrange 1`, `--slice 0`, and `--export-3mf`. It verifies that the output is a 3MF archive containing nonempty G-code. It does not auto-orient the part: the reviewed CAD orientation is preserved, while the slicer arranges it on the plate. On headless Linux, some Bambu Studio builds require an X display; point `DREAMER_SLICER_BIN` at a local executable wrapper using `xvfb-run` if needed.
 
 ## Printer dispatch
 
-The official Bambu Studio CLI documents slicing, not a general print-dispatch command. This project supplies a separate adapter for the community [voska/bambu](https://github.com/voska/bambu) CLI. It is **not an official Bambu Lab CLI**. Its documented hardware validation is on X1 Carbon; **A1 mini dispatch must be validated with your actual firmware and setup**. Slicing and artifact downloads work independently of this adapter.
+The official Bambu Studio CLI documents slicing, not a general print-dispatch
+command. Dreamer provides two optional transports. Slicing and downloads work
+independently of dispatch. **Neither adapter is an official Bambu Lab print API.**
+
+### Direct LAN adapter
+
+Select `lan` for the bundled MQTT/implicit-FTPS adapter. It does not change cloud
+connectivity, LAN Only, Developer Mode, firmware, or account settings. Whether
+cloud mode permits print commands depends on the printer firmware; successful
+telemetry or FTP authentication does not establish print-command compatibility.
+This implementation has offline protocol and workflow tests, but physical A1 mini
+dispatch has not yet been validated.
+
+```dotenv
+DREAMER_PRINTER_TRANSPORT=lan
+DREAMER_PRINTER_NAME=workbench
+DREAMER_PRINTER_HOST=printer-address
+DREAMER_PRINTER_SERIAL=printer-serial
+DREAMER_PRINTER_ACCESS_CODE=printer-access-code
+DREAMER_FILAMENT_SLOT=A1
+DREAMER_PRINT_ENABLED=false
+```
+
+Keep these values in a private environment file. The transport verifies the Bambu
+CA chain and the configured serial as the TLS server identity. Its trust roots are
+documented in [certs/README.md](backend/dreamer/certs/README.md); custom roots can
+be supplied through `DREAMER_PRINTER_CA_FILE`. Secrets are passed to the bounded
+dispatch subprocess through its environment, never command arguments.
+
+Current scope is one A1 mini plate and one filament, using AMS Lite slots A1–A4.
+External spools and multiple filaments are rejected. Before uploading, the adapter
+requires fresh telemetry showing an idle printer, available SD card, matching
+nozzle and slot material, and no reported errors. It uploads a uniquely named file,
+reads it back to verify SHA-256, then opens a fresh MQTT session and repeats the
+preflight before publishing one print command. A matching successful printer
+response is required; a broker send or unrelated status update is not success.
+No automatic publish retries or reconnects occur.
+
+The physical build plate, remaining filament, bed clearance, and exclusive use of
+the printer still require operator verification. Another client can start a job
+after the final status check; the local protocol does not provide an atomic
+reservation. Only enable printing after firmware compatibility and the actual
+setup have been checked, then explicitly confirm each job in the web UI.
+
+### Community CLI adapter
+
+The default `cli` transport invokes [voska/bambu](https://github.com/voska/bambu).
+Its documented hardware validation is on X1 Carbon, and its preflight requires
+LAN Only/Developer Mode. This mode is unsuitable when cloud connectivity must be
+preserved. A1 mini compatibility requires independent validation.
 
 Install that CLI separately, configure a named printer using its `printer add` and `auth set` commands, and verify `bambu status`. Follow its documentation for LAN mode, Developer Mode, and credentials. Dreamer never changes printer firmware, operating mode, or authentication settings. Printer credentials belong in the CLI's keychain/configuration, not in the browser.
 

@@ -65,7 +65,7 @@ jobs:
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Exercise real CAD generation and persistent storage
+      - name: Exercise real CAD, A1 mini slicing, and persistent storage
         run: python3 scripts/smoke_container.py '${{ steps.image.outputs.name }}:sha-${{ github.sha }}'
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'

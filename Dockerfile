@@ -22,6 +22,16 @@ ENV UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-project --python /usr/local/bin/python
 
+FROM python-base AS slicer
+# Official Linux release, pinned by version and checksum. No network plugin is installed.
+ADD https://github.com/bambulab/BambuStudio/releases/download/v02.08.02.61/BambuStudio_ubuntu22.04-v02.08.02.61-20260820225108.AppImage /tmp/bambu.AppImage
+RUN echo '69426a59682574591590f51c913d3889baa19252d1c8e9fcae2497eb0ed6bf92  /tmp/bambu.AppImage' | sha256sum -c - \
+    && chmod +x /tmp/bambu.AppImage \
+    && cd /opt && /tmp/bambu.AppImage --appimage-extract > /dev/null \
+    && mv squashfs-root bambu-studio && rm /tmp/bambu.AppImage
+COPY backend/dreamer/profiles.py /tmp/profiles.py
+RUN python /tmp/profiles.py /opt/bambu-studio/resources/profiles/BBL /opt/dreamer-profiles
+
 FROM python-base AS runtime
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.title="Dreamer" \
@@ -32,13 +42,23 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DREAMER_DATA_DIR=/data \
+    DREAMER_SLICER_BIN=/usr/local/bin/bambu-studio \
+    DREAMER_MACHINE_PROFILE=/opt/dreamer-profiles/machine.json \
+    DREAMER_PROCESS_PROFILE=/opt/dreamer-profiles/process.json \
+    DREAMER_FILAMENT_PROFILE=/opt/dreamer-profiles/filament.json \
     XDG_CACHE_HOME=/tmp/dreamer-cache \
     MPLCONFIGDIR=/tmp/matplotlib
 WORKDIR /app
-RUN groupadd --gid 10001 dreamer \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 libgstreamer-plugins-base1.0-0 xvfb xauth \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 dreamer \
     && useradd --uid 10001 --gid dreamer --create-home dreamer \
     && mkdir /data && chown dreamer:dreamer /data
 COPY --from=dependencies /app/.venv /app/.venv
+COPY --from=slicer /opt/bambu-studio /opt/bambu-studio
+COPY --from=slicer /opt/dreamer-profiles /opt/dreamer-profiles
+COPY --chmod=755 scripts/bambu-studio-headless /usr/local/bin/bambu-studio
 COPY --from=frontend /src/frontend/dist /app/frontend/dist
 COPY backend/dreamer/ /app/backend/dreamer/
 COPY scripts/resolve_dispatch.py /app/scripts/resolve_dispatch.py

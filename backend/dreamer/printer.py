@@ -1,6 +1,8 @@
 import hashlib
 import json
+import os
 import shutil
+import sys
 import zipfile
 from pathlib import Path
 
@@ -47,6 +49,22 @@ def validate_profiles(settings: Settings):
             )
 
 
+def preset_names(settings: Settings) -> list[str]:
+    names = []
+    for value in (
+        settings.machine_profile,
+        settings.process_profile,
+        settings.filament_profile,
+    ):
+        try:
+            name = json.loads(Path(value).read_text()).get("name")
+            if isinstance(name, str):
+                names.append(name)
+        except (OSError, ValueError, AttributeError):
+            continue
+    return names
+
+
 async def slice_model(settings: Settings, directory: Path):
     validate_profiles(settings)
     output = directory / "print.gcode.3mf"
@@ -87,6 +105,16 @@ async def slice_model(settings: Settings, directory: Path):
 
 
 def print_ready(settings: Settings) -> bool:
+    if settings.printer_transport == "lan":
+        return bool(
+            settings.print_enabled
+            and settings.printer_name
+            and settings.printer_host
+            and settings.printer_serial
+            and settings.printer_access_code
+            and Path(settings.printer_ca_file).is_file()
+            and slicer_ready(settings)
+        )
     return bool(
         settings.print_enabled
         and settings.printer_name
@@ -96,7 +124,22 @@ def print_ready(settings: Settings) -> bool:
 
 async def send_print(settings: Settings, path: Path):
     if not print_ready(settings):
-        raise ValueError("Enable printing and configure the bambu CLI and printer name")
+        raise ValueError(
+            "Printing is disabled or the selected transport is not configured"
+        )
+    if settings.printer_transport == "lan":
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
+        for key, value in settings.model_dump(mode="json").items():
+            env["DREAMER_" + key.upper()] = (
+                value if isinstance(value, str) else json.dumps(value)
+            )
+        await run_command(
+            [sys.executable, "-m", "dreamer.lan", str(path.resolve())],
+            settings.command_timeout,
+            env=env,
+        )
+        return
     # This CLI performs its own printer/material/nozzle/plate preflight before dispatch.
     await run_command(
         [

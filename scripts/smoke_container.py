@@ -1,12 +1,14 @@
 """Verify a built image without provider credentials or printer access."""
 
 import argparse
+import io
 import json
 import subprocess
 import time
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
 
 
 def main():
@@ -86,6 +88,7 @@ def main():
             raise AssertionError("Container allowed an unauthenticated API request")
         status = json.loads(request("/api/status"))
         assert not status["print_ready"]
+        assert status["slicer_ready"]
         job = json.loads(
             request(
                 "/api/jobs",
@@ -104,6 +107,61 @@ def main():
         assert job["geometry"]["dimensions"] == [72, 72, 65]
         assert len(request(endpoint + "/files/model.stl")) > 100
         assert b"ISO-10303-21" in request(endpoint + "/files/model.step")
+        request(
+            endpoint + "/slice",
+            {
+                "confirmed": True,
+                "artifact_sha256": job["model_sha256"],
+            },
+        )
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            job = json.loads(request(endpoint))
+            if job["state"] == "sliced":
+                break
+            assert not job.get("error"), job["error"]
+            time.sleep(0.5)
+        assert job["state"] == "sliced", job
+        with zipfile.ZipFile(
+            io.BytesIO(request(endpoint + "/files/print.gcode.3mf"))
+        ) as archive:
+            gcode = archive.read("Metadata/plate_1.gcode")
+            assert len(gcode) > 1000
+            assert b"A1 mini" in gcode
+            project = json.loads(archive.read("Metadata/project_settings.config"))
+            assert project["printer_model"] == "Bambu Lab A1 mini"
+            assert project["nozzle_diameter"] == ["0.4"]
+            assert project["filament_type"] == ["PLA"]
+            assert project["printable_height"] == "180"
+            assert project["machine_start_gcode"]
+            assert project["machine_end_gcode"]
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                name,
+                "python",
+                "-c",
+                "from pathlib import Path; from dreamer.config import Settings; "
+                "from dreamer.lan import inspect_slice; "
+                "import sys; inspect_slice(Path(sys.argv[1]), Settings())",
+                "/data/" + job["id"] + "/print.gcode.3mf",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        try:
+            request(
+                endpoint + "/print",
+                {
+                    "confirmed": True,
+                    "artifact_sha256": job["slice_sha256"],
+                },
+            )
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 503
+        else:
+            raise AssertionError("Printing must remain disabled")
         uid = subprocess.check_output(
             ["docker", "exec", name, "id", "-u"], text=True
         ).strip()
@@ -115,10 +173,10 @@ def main():
         base = "http://" + port
         ready()
         restored = json.loads(request(endpoint))
-        assert restored["state"] == "preview"
+        assert restored["state"] == "sliced"
         assert restored["model_sha256"] == job["model_sha256"]
         print(
-            "Container smoke passed: UI, authentication, CAD exports, non-root user, restart persistence."
+            "Container smoke passed: UI, authentication, CAD, real A1 mini slicing, disabled dispatch, restart persistence."
         )
     except Exception:
         subprocess.run(["docker", "logs", "--tail", "60", name], check=False)

@@ -86,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "llm_ready": bool(settings.llm_api_key and settings.llm_model),
             "model": settings.llm_model or "Not configured",
             "slicer_ready": printer.slicer_ready(settings),
+            "slicing_presets": printer.preset_names(settings),
             "print_ready": printer.print_ready(settings),
             "printer": settings.printer_name or "A1 mini (not connected)",
             "build_volume": settings.build_volume,
@@ -155,7 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise Conflict("Only a sliced job can be submitted once")
         if not printer.print_ready(settings):
             raise HTTPException(
-                503, "Printing is disabled or the printer CLI is not configured"
+                503, "Printing is disabled or the printer transport is not configured"
             )
         if (
             approval.artifact_sha256 != job["slice_sha256"]

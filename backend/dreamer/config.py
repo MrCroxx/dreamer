@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -28,6 +29,11 @@ class Settings(BaseSettings):
     printer_name: str = ""
     filament_slot: str = "A1"
     print_enabled: bool = False
+    printer_transport: Literal["cli", "lan"] = "cli"
+    printer_host: str = ""
+    printer_serial: str = ""
+    printer_access_code: str = ""
+    printer_ca_file: str = str(Path(__file__).with_name("certs") / "bambu-ca.pem")
     build_volume: tuple[float, float, float] = (180, 180, 180)
     cad_timeout: int = Field(default=90, ge=1)
     command_timeout: int = Field(default=300, ge=1)

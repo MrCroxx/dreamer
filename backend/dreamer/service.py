@@ -26,7 +26,13 @@ class Service:
 
     def error(self, exc: Exception) -> str:
         text = str(exc) or type(exc).__name__
-        for secret in [self.settings.llm_api_key, self.settings.api_token]:
+        for secret in [
+            self.settings.llm_api_key,
+            self.settings.api_token,
+            self.settings.printer_access_code,
+            self.settings.printer_serial,
+            self.settings.printer_host,
+        ]:
             if secret:
                 text = text.replace(secret, "[redacted]")
         return text[:3000]

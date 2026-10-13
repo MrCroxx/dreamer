@@ -864,7 +864,7 @@ export function App() {
             <Layers3 size={19} />
             <div>
               <strong>Bambu Studio CLI</strong>
-              <p>Machine, process & filament presets</p>
+              <p>{status?.slicing_presets?.join(" · ") || "Machine, process & filament presets"}</p>
             </div>
             <span
               className={`connection-state ${status?.slicer_ready ? "ready" : ""}`}
@@ -970,12 +970,13 @@ export function App() {
           <p className="modal-description">
             {confirm === "slice"
               ? "Bambu Studio will slice this exact model using your configured printer, process, and filament presets."
-              : "This sends the sliced file to your physical printer and starts a print after the CLI preflight passes."}
+              : "This sends the sliced file to your physical printer and starts a print after the printer checks pass."}
           </p>
           <div className="approval-summary">
             <strong>{selected.name}</strong>
             <span>{selected.geometry?.dimensions.join(" × ")} mm</span>
             <span>{status?.printer}</span>
+            {confirm === "slice" && status?.slicing_presets?.map((preset) => <span key={preset}>{preset}</span>)}
             <span>
               {status?.bed_type} · Filament slot {status?.filament_slot}
             </span>
