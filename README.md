@@ -116,7 +116,7 @@ are unchanged. Set `DREAMER_LIVE_PREVIEW=false` to avoid draft export costs, or
 `DREAMER_LLM_STREAM=false` for providers without Chat Completions SSE support.
 In the latter case, CAD starts after the complete response arrives.
 
-Expand **Model output** below the viewer to optionally follow the provider's raw
+Open **Output** in the preview toolbar to optionally follow the provider's raw
 response text and any returned `reasoning_content` / `reasoning` text. The panel
 is closed by default and only fetches output while open. It supports following
 the latest text, scrolling back, downloading the displayed transcript, and
@@ -156,12 +156,16 @@ The modeling vocabulary is intended for geometric and functional parts, includin
 
 ### Conversation workspace and preview color
 
-The workspace pairs a scrollable conversation with the 3D preview. The composer
-stays at the bottom of the conversation; **Enter** sends and **Shift + Enter**
+The workspace fills the browser window. The conversation scrolls independently;
+the composer, preview toolbar, and slicing/printing action stay in view. **Enter** sends and **Shift + Enter**
 inserts a newline. IME composition does not submit a message. Text drafts survive
 refresh within the browser tab; image attachments remain in memory only.
-On small screens, switch between **Conversation** and **3D preview**. Model details,
-activity, and the CAD plan are in a collapsible inspector below the preview.
+On small screens, switch between **Conversation** and **3D preview**. The preview
+toolbar opens **Color**, **Details**, **Output**, and **Export** panels without
+resizing or remounting the canvas. Details include dimensions, design notes,
+activity, and the CAD plan. Long panel content scrolls independently. Close a
+panel with its close button or Escape; keyboard focus returns to its toolbar
+button. STL, STEP, and sliced 3MF downloads are under **Export**.
 
 Each response includes a clickable version card with its dimensions and status.
 When viewing an older version, **Back to latest** returns to the conversation tip;
@@ -175,10 +179,10 @@ changes inherit the preceding color when the provider omits it. Appearance-only
 responses can reuse the verified STL and STEP without rebuilding the CAD model.
 The existing model provider chooses whether a request changes only appearance.
 
-The **Preview color** swatches and custom picker update the viewer immediately
+The **Color** panel's swatches and custom picker update the viewer immediately
 without resetting its camera or display controls. **Save color** creates a new
 version locally, with no LLM call, and leaves the original unchanged. Discard an
-unsaved preview to restore the version's saved color. A new color version must be
+unsaved preview, or close the color panel, to restore the version's saved color. A new color version must be
 approved separately for slicing; it never inherits an existing print approval.
 
 Color is a single visual material for the whole model. It does not change STL/STEP

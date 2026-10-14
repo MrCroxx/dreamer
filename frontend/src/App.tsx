@@ -14,6 +14,9 @@ import {
   LoaderCircle,
   Plus,
   Printer,
+  Palette,
+  Terminal,
+  MessageSquare,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -32,7 +35,6 @@ const templates = [
   {
     id: "organizer",
     name: "Pocket organizer",
-    tag: "EVERYDAY OBJECTS",
     prompt:
       "Design a 100 x 65 x 30 mm desk organizer with rounded corners, a 3 mm bottom and walls, and two compartments.",
     icon: Layers3,
@@ -40,7 +42,6 @@ const templates = [
   {
     id: "bracket",
     name: "Mounting bracket",
-    tag: "FUNCTIONAL PARTS",
     prompt:
       "Make an L-shaped mounting bracket, 60 mm wide and 40 mm deep, with a 45 mm upright and two 6 mm screw holes in the base.",
     icon: SlidersHorizontal,
@@ -48,7 +49,6 @@ const templates = [
   {
     id: "planter",
     name: "Desktop planter",
-    tag: "A LITTLE GREEN",
     prompt:
       "Create a cylindrical desktop planter, 72 mm diameter and 65 mm tall, with 3 mm walls and a 6 mm drainage hole.",
     icon: Box,
@@ -56,7 +56,6 @@ const templates = [
   {
     id: "vase",
     name: "Contoured vase",
-    tag: "CURVED FORMS",
     prompt:
       "Create a smooth open-top vase, 75 mm tall with 2 mm walls. Loft circular sections with radii 22, 28, 16, and 20 mm at heights 0, 20, 50, and 75 mm, then hollow it inward while preserving the base.",
     icon: WandSparkles,
@@ -94,6 +93,9 @@ export function App() {
   const [draftVisible, setDraftVisible] = useState(false);
   const [previewColor, setPreviewColor] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
+  const [tool, setTool] = useState<
+    "color" | "details" | "output" | "export" | null
+  >(null);
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -116,6 +118,7 @@ export function App() {
     "#dd7652";
   useEffect(() => {
     setPreviewColor(null);
+    setTool(null);
   }, [selectedId]);
   useEffect(() => {
     try {
@@ -131,6 +134,10 @@ export function App() {
       promptInput.current.style.height = `${Math.min(160, Math.max(76, promptInput.current.scrollHeight))}px`;
     }
   }, [prompt, conversationTip]);
+
+  useEffect(() => {
+    if (tool !== "color") setPreviewColor(null);
+  }, [tool]);
 
   async function saveColor(color: string) {
     if (!selected || isBusy || pending) return;
@@ -315,6 +322,7 @@ export function App() {
   }
 
   function focusComposer() {
+    setTool(null);
     setMobileTab("chat");
     requestAnimationFrame(() => promptInput.current?.focus());
   }
@@ -333,23 +341,20 @@ export function App() {
           <span className="brand-mark">
             d<span>●</span>
           </span>
-          dreamer<span className="beta">BETA</span>
+          dreamer
         </a>
-        <div className="workspace-label">
-          YOUR WORKSPACE <span>01</span>
-        </div>
         <button className="new-model" onClick={newModel}>
-          <Plus size={17} /> New creation <span>↗</span>
+          <Plus size={17} /> New creation
         </button>
         <div className="nav-title">
-          <Clock3 size={14} /> Recent creations{" "}
-          <span>{creations.length.toString().padStart(2, "0")}</span>
+          <Clock3 size={14} /> Recent creations
         </div>
         <div className="job-list">
           {jobs.length ? (
             creations.map((job) => (
               <button
                 key={job.id}
+                title={job.name}
                 className={`job-item ${job.id === conversationTip ? "selected" : ""}`}
                 onClick={() => {
                   selectVersion(job.id, true);
@@ -372,11 +377,7 @@ export function App() {
               </button>
             ))
           ) : (
-            <p className="history-empty">
-              A blank canvas, for now.
-              <br />
-              Your creations will live here.
-            </p>
+            <p className="history-empty">No creations yet.</p>
           )}
         </div>
         <div className="sidebar-bottom">
@@ -405,11 +406,8 @@ export function App() {
             <Settings2 size={16} /> Connections & settings
           </button>
           <button className="sidebar-link" onClick={() => setHelpOpen(true)}>
-            <CircleHelp size={16} /> A little guidance <span>↗</span>
+            <CircleHelp size={16} /> Help
           </button>
-          <div className="local-badge">
-            <span className="dot green" /> LOCAL WORKSPACE <span>v0.1</span>
-          </div>
         </div>
       </aside>
 
@@ -425,9 +423,6 @@ export function App() {
             )}
           </div>
           <div className="topbar-right">
-            <span className="local-pill">
-              <span className="dot green" /> Built locally
-            </span>
             <button
               className="avatar"
               title="Open settings"
@@ -471,7 +466,10 @@ export function App() {
             <button
               role="tab"
               aria-selected={mobileTab === "chat"}
-              onClick={() => setMobileTab("chat")}
+              onClick={() => {
+                setTool(null);
+                setMobileTab("chat");
+              }}
             >
               Conversation
             </button>
@@ -504,17 +502,7 @@ export function App() {
           <div className="workbench">
             <section className="composer-panel">
               <div className="chat-heading">
-                <span className="chat-avatar">
-                  <Sparkles size={18} />
-                </span>
-                <div>
-                  <h2>Design with Dreamer</h2>
-                  <p>
-                    {selectedId
-                      ? "Every change is saved as a version."
-                      : "Describe it. Refine it. Make it."}
-                  </p>
-                </div>
+                <h2>Conversation</h2>
               </div>
               {conversationTip && (
                 <Conversation
@@ -529,14 +517,7 @@ export function App() {
               {!conversationTip && (
                 <div className="chat-welcome">
                   <h3>What would you like to make?</h3>
-                  <p>
-                    Describe an object, add measurements, or attach a reference.
-                    Start with an idea below.
-                  </p>
-                  <div className="ideas-header">
-                    <span>A SPARK TO START WITH</span>
-                    <span>↙</span>
-                  </div>
+
                   <div className="template-list">
                     {templates.map((template) => (
                       <div className="template-card" key={template.id}>
@@ -550,7 +531,6 @@ export function App() {
                             <template.icon size={24} strokeWidth={1.2} />
                           </span>
                           <span>
-                            <small>{template.tag}</small>
                             <strong>{template.name}</strong>
                           </span>
                           <ArrowRight size={14} />
@@ -567,15 +547,9 @@ export function App() {
                 </div>
               )}
               <div className="chat-composer">
-                {selectedId && (
+                {selectedId && selectedId !== conversationTip && (
                   <div className="revision-banner">
-                    <span>
-                      {selectedId !== conversationTip
-                        ? "Editing an earlier version"
-                        : isBusy
-                          ? "Your model is being created"
-                          : "Continue from the version in preview"}
-                    </span>
+                    <span>Editing an earlier version</span>
                     {selectedId !== conversationTip && conversationTip && (
                       <button onClick={() => selectVersion(conversationTip)}>
                         Back to latest
@@ -639,11 +613,7 @@ export function App() {
                     <button onClick={() => imageInput.current?.click()}>
                       <ImagePlus size={15} /> Add reference
                     </button>
-                    <span>
-                      {images.length
-                        ? `${images.length}/3 images`
-                        : "PNG, JPG, WEBP"}
-                    </span>
+                    {images.length > 0 && <span>{images.length}/3</span>}
                   </div>
                 </div>
                 <input
@@ -666,10 +636,10 @@ export function App() {
                     </span>
                     <span>
                       {demo
-                        ? "Demo template · fixed dimensions"
+                        ? "Demo template"
                         : status?.llm_ready
                           ? status.model
-                          : "Connect a model to get started"}
+                          : "Connect model"}
                     </span>
                     <ChevronDown className="model-chevron" size={13} />
                   </button>
@@ -698,277 +668,286 @@ export function App() {
                     <ArrowRight size={17} />
                   </button>
                 </div>
-                <div className="prompt-hint" role="status">
-                  {demo
-                    ? "Fixed demo · No model call"
-                    : isBusy
-                      ? "Runs in the background. You can draft your next message."
-                      : "Enter to send · Shift + Enter for a new line"}
-                </div>
               </div>
             </section>
 
-            <section className="preview-panel">
-              <div className="preview-heading">
-                <div className="section-label">
-                  <span>
-                    <Box size={16} /> Model preview
-                  </span>
-                </div>
-                {selected && (
-                  <button className="preview-chat-link" onClick={focusComposer}>
-                    Ask for a change <ArrowRight size={14} />
+            <section className="preview-panel" aria-label="Model workspace">
+              <div
+                className="preview-heading"
+                role="toolbar"
+                aria-label="Model tools"
+              >
+                {(
+                  [
+                    ["color", "Color", "Preview color", Palette],
+                    ["details", "Details", "Model details", SlidersHorizontal],
+                    ["output", "Output", "Model output", Terminal],
+                    ["export", "Export", "Export model", ArrowDownToLine],
+                  ] as const
+                ).map(([id, label, name, Icon]) => (
+                  <button
+                    key={id}
+                    aria-label={name}
+                    aria-expanded={tool === id}
+                    aria-controls="model-tool-panel"
+                    disabled={
+                      !selected ||
+                      ((id === "color" || id === "export") &&
+                        !selected.model_sha256)
+                    }
+                    onClick={() => setTool(tool === id ? null : id)}
+                  >
+                    <Icon size={17} />
+                    <span>{label}</span>
                   </button>
+                ))}
+                <button
+                  className="preview-chat-link"
+                  aria-label="Ask for a change"
+                  title="Ask for a change"
+                  onClick={focusComposer}
+                >
+                  <MessageSquare size={18} />
+                </button>
+              </div>
+              <div className="preview-stage">
+                <Viewer
+                  jobId={selected?.id}
+                  modelHash={selected?.model_sha256}
+                  color={previewColor || savedColor}
+                  buildVolume={status?.build_volume || [180, 180, 180]}
+                  busy={isBusy}
+                  onDraftChange={setDraftVisible}
+                  live={
+                    selected?.state === "generating" ||
+                    selected?.state === "building"
+                  }
+                />
+                {tool && selected && (
+                  <ToolPanel
+                    title={
+                      {
+                        color: "Preview color",
+                        details: "Model details",
+                        output: "Model output",
+                        export: "Export model",
+                      }[tool]
+                    }
+                    compact={tool === "color" || tool === "export"}
+                    onClose={() => setTool(null)}
+                  >
+                    {tool === "color" && (
+                      <ColorControls
+                        key={`${selected.id}-${savedColor}`}
+                        color={savedColor}
+                        disabled={pending || isBusy}
+                        onPreview={setPreviewColor}
+                        onSave={saveColor}
+                      />
+                    )}
+                    {tool === "details" && (
+                      <>
+                        <div className="spec-grid">
+                          <div>
+                            <span>DIMENSIONS</span>
+                            <strong>
+                              {selected?.geometry
+                                ? selected.geometry.dimensions
+                                    .map((d) => Number(d.toFixed(1)))
+                                    .join(" × ")
+                                : "—"}
+                              <small> mm</small>
+                            </strong>
+                          </div>
+                          <div>
+                            <span>SOLID VOLUME</span>
+                            <strong>
+                              {selected?.geometry
+                                ? (selected.geometry.volume_mm3 / 1000).toFixed(
+                                    1,
+                                  )
+                                : "—"}
+                              <small> cm³</small>
+                            </strong>
+                          </div>
+                          <div>
+                            <span>BUILD PLATE</span>
+                            <strong
+                              className={
+                                selected?.geometry?.fits_build_volume === false
+                                  ? "warning-text"
+                                  : ""
+                              }
+                            >
+                              {selected?.geometry
+                                ? selected.geometry.fits_build_volume
+                                  ? "Fits A1 mini"
+                                  : "Exceeds build volume"
+                                : "180 × 180"}
+                              {!selected?.geometry && <small> mm</small>}
+                            </strong>
+                          </div>
+                        </div>
+                        <section className="details-panel">
+                          <div className="details-tabs">
+                            <button
+                              className={tab === "details" ? "active" : ""}
+                              onClick={() => setTab("details")}
+                            >
+                              <SlidersHorizontal size={14} /> Design notes
+                            </button>
+                            <button
+                              className={tab === "history" ? "active" : ""}
+                              onClick={() => setTab("history")}
+                            >
+                              <Clock3 size={14} /> Activity
+                            </button>
+                            <button
+                              className={tab === "cad" ? "active" : ""}
+                              onClick={() => setTab("cad")}
+                            >
+                              <Code2 size={14} /> CAD plan
+                            </button>
+                          </div>
+                          {selected?.error && (
+                            <div role="alert" className="job-error">
+                              {selected.error}
+                            </div>
+                          )}
+                          {tab === "details" && (
+                            <div className="design-notes">
+                              {selected?.plan ? (
+                                <>
+                                  <p>{selected.plan.description}</p>
+                                  <ul>
+                                    {selected.plan.assumptions.map(
+                                      (assumption, i) => (
+                                        <li key={i}>{assumption}</li>
+                                      ),
+                                    )}
+                                  </ul>
+                                  <div className="original-prompt">
+                                    <span>YOUR BRIEF</span>
+                                    <p>{selected.prompt}</p>
+                                  </div>
+                                </>
+                              ) : (
+                                <p>No design notes yet.</p>
+                              )}
+                            </div>
+                          )}
+                          {tab === "history" && (
+                            <div className="activity-list">
+                              {selected ? (
+                                selected.events.map((event, i) => (
+                                  <div key={i}>
+                                    <Check size={13} />
+                                    <span>{event.message}</span>
+                                    <time>
+                                      {new Date(event.at).toLocaleTimeString()}
+                                    </time>
+                                  </div>
+                                ))
+                              ) : (
+                                <p>No activity yet.</p>
+                              )}
+                            </div>
+                          )}
+                          {tab === "cad" && (
+                            <div className="cad-content">
+                              {selected?.plan ? (
+                                <>
+                                  <button
+                                    onClick={() => exportFile("plan.json")}
+                                  >
+                                    <ArrowDownToLine size={14} /> Download CAD
+                                    plan
+                                  </button>
+                                  <pre>
+                                    {JSON.stringify(selected.plan, null, 2)}
+                                  </pre>
+                                </>
+                              ) : (
+                                <p>No CAD plan yet.</p>
+                              )}
+                            </div>
+                          )}
+                          {selected?.slice_sha256 && (
+                            <button
+                              className="download-slice"
+                              onClick={() => exportFile("print.gcode.3mf")}
+                            >
+                              <ArrowDownToLine size={14} /> Download sliced 3MF
+                            </button>
+                          )}
+                        </section>
+                      </>
+                    )}
+                    {tool === "output" && (
+                      <ModelOutput
+                        key={selected.id}
+                        jobId={selected.id}
+                        demo={selected.demo}
+                      />
+                    )}
+                    {tool === "export" && (
+                      <div className="export-options">
+                        <button
+                          onClick={() => exportFile("model.stl")}
+                          aria-label="Download STL"
+                        >
+                          <ArrowDownToLine size={18} />
+                          <span>
+                            STL<small>Triangle mesh</small>
+                          </span>
+                        </button>
+                        <button
+                          onClick={() => exportFile("model.step")}
+                          aria-label="Download STEP"
+                        >
+                          <ArrowDownToLine size={18} />
+                          <span>
+                            STEP<small>CAD solid</small>
+                          </span>
+                        </button>
+                        {selected.slice_sha256 && (
+                          <button onClick={() => exportFile("print.gcode.3mf")}>
+                            <ArrowDownToLine size={18} />
+                            <span>
+                              Sliced 3MF<small>Printer-ready file</small>
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </ToolPanel>
                 )}
               </div>
-              <Viewer
-                jobId={selected?.id}
-                modelHash={selected?.model_sha256}
-                color={previewColor || savedColor}
-                buildVolume={status?.build_volume || [180, 180, 180]}
-                busy={isBusy}
-                onDraftChange={setDraftVisible}
-                live={
-                  selected?.state === "generating" ||
-                  selected?.state === "building"
-                }
-              />
-              <div className="model-info">
-                <div className="model-title">
-                  <span className="object-icon">
-                    <Box size={20} strokeWidth={1.4} />
-                  </span>
-                  <div>
-                    <h3>
-                      {selected?.name || "Your next creation"}
-                      {selected?.demo && (
-                        <span className="demo-badge">DEMO</span>
+              <div className="make-row">
+                <div className="model-size">
+                  {selected?.geometry &&
+                  (selected.state === "preview" ||
+                    selected.state === "sliced") ? (
+                    <>
+                      <span>
+                        {selected.geometry.dimensions
+                          .map((d) => Number(d.toFixed(1)))
+                          .join(" × ")}{" "}
+                        mm
+                      </span>
+                      {!selected.geometry.fits_build_volume && (
+                        <strong className="warning-text">
+                          Exceeds build volume
+                        </strong>
                       )}
-                    </h3>
-                    <p>
+                    </>
+                  ) : (
+                    <span>
                       {selected
                         ? stateLabels[selected.state]
-                        : "Waiting for a little inspiration"}
-                    </p>
-                  </div>
-                  {selected?.model_sha256 && (
-                    <div className="download-buttons">
-                      <button
-                        title="Download STL"
-                        aria-label="Download STL"
-                        onClick={() => exportFile("model.stl")}
-                      >
-                        <ArrowDownToLine size={14} /> STL
-                      </button>
-                      <button
-                        title="Download STEP"
-                        aria-label="Download STEP"
-                        onClick={() => exportFile("model.step")}
-                      >
-                        <ArrowDownToLine size={14} /> STEP
-                      </button>
-                    </div>
+                        : "No model selected"}
+                    </span>
                   )}
-                </div>
-                <div className="spec-grid">
-                  <div>
-                    <span>DIMENSIONS</span>
-                    <strong>
-                      {selected?.geometry
-                        ? selected.geometry.dimensions
-                            .map((d) => Number(d.toFixed(1)))
-                            .join(" × ")
-                        : "—"}
-                      <small> mm</small>
-                    </strong>
-                  </div>
-                  <div>
-                    <span>SOLID VOLUME</span>
-                    <strong>
-                      {selected?.geometry
-                        ? (selected.geometry.volume_mm3 / 1000).toFixed(1)
-                        : "—"}
-                      <small> cm³</small>
-                    </strong>
-                  </div>
-                  <div>
-                    <span>BUILD PLATE</span>
-                    <strong
-                      className={
-                        selected?.geometry?.fits_build_volume === false
-                          ? "warning-text"
-                          : ""
-                      }
-                    >
-                      {selected?.geometry
-                        ? selected.geometry.fits_build_volume
-                          ? "Fits A1 mini"
-                          : "Exceeds build volume"
-                        : "180 × 180"}
-                      {!selected?.geometry && <small> mm</small>}
-                    </strong>
-                  </div>
-                </div>
-              </div>
-              {selected?.model_sha256 && (
-                <ColorControls
-                  key={`${selected.id}-${savedColor}`}
-                  color={savedColor}
-                  disabled={pending || isBusy}
-                  onPreview={setPreviewColor}
-                  onSave={saveColor}
-                />
-              )}
-              {selected && (
-                <details className="model-inspector">
-                  <summary>
-                    Model details & activity <ChevronDown size={15} />
-                  </summary>
-                  <section className="details-panel">
-                    <div className="details-tabs">
-                      <button
-                        className={tab === "details" ? "active" : ""}
-                        onClick={() => setTab("details")}
-                      >
-                        <SlidersHorizontal size={14} /> Design notes
-                      </button>
-                      <button
-                        className={tab === "history" ? "active" : ""}
-                        onClick={() => setTab("history")}
-                      >
-                        <Clock3 size={14} /> Activity
-                      </button>
-                      <button
-                        className={tab === "cad" ? "active" : ""}
-                        onClick={() => setTab("cad")}
-                      >
-                        <Code2 size={14} /> CAD plan
-                      </button>
-                      {selected?.plan && (
-                        <button
-                          className="refine-button"
-                          onClick={() => {
-                            setDemo(null);
-                            promptInput.current?.focus();
-                          }}
-                        >
-                          <WandSparkles size={14} /> Refine this model{" "}
-                          <ArrowRight size={13} />
-                        </button>
-                      )}
-                    </div>
-                    {selected?.error && (
-                      <div role="alert" className="job-error">
-                        {selected.error}
-                      </div>
-                    )}
-                    {tab === "details" && (
-                      <div className="design-notes">
-                        {selected?.plan ? (
-                          <>
-                            <p>{selected.plan.description}</p>
-                            <ul>
-                              {selected.plan.assumptions.map(
-                                (assumption, i) => (
-                                  <li key={i}>{assumption}</li>
-                                ),
-                              )}
-                            </ul>
-                            <div className="original-prompt">
-                              <span>YOUR BRIEF</span>
-                              <p>{selected.prompt}</p>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <span className="note-asterisk">✳</span>
-                            <div>
-                              <strong>
-                                Good things take shape, one detail at a time.
-                              </strong>
-                              <p>
-                                Your model's dimensions, design decisions, and
-                                assumptions will appear here.
-                              </p>
-                            </div>
-                            <span className="cad-note">
-                              PARAMETRIC BY NATURE.
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {tab === "history" && (
-                      <div className="activity-list">
-                        {selected ? (
-                          selected.events.map((event, i) => (
-                            <div key={i}>
-                              <Check size={13} />
-                              <span>{event.message}</span>
-                              <time>
-                                {new Date(event.at).toLocaleTimeString()}
-                              </time>
-                            </div>
-                          ))
-                        ) : (
-                          <p>Your creation's journey will appear here.</p>
-                        )}
-                      </div>
-                    )}
-                    {tab === "cad" && (
-                      <div className="cad-content">
-                        {selected?.plan ? (
-                          <>
-                            <button onClick={() => exportFile("plan.json")}>
-                              <ArrowDownToLine size={14} /> Download CAD plan
-                            </button>
-                            <pre>{JSON.stringify(selected.plan, null, 2)}</pre>
-                          </>
-                        ) : (
-                          <p>
-                            Every creation has an editable, structured CAD plan.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                    {selected?.slice_sha256 && (
-                      <button
-                        className="download-slice"
-                        onClick={() => exportFile("print.gcode.3mf")}
-                      >
-                        <ArrowDownToLine size={14} /> Download sliced 3MF
-                      </button>
-                    )}
-                  </section>
-                </details>
-              )}
-              {selected && (
-                <ModelOutput
-                  key={selected.id}
-                  jobId={selected.id}
-                  demo={selected.demo}
-                />
-              )}
-
-              <div className="make-row">
-                <div>
-                  <span className="step-dot">3</span>
-                  <div>
-                    <strong>
-                      {selected?.state === "sliced"
-                        ? "Ready to make it real?"
-                        : selected?.state === "submitted"
-                          ? "Your creation is on its way."
-                          : "Happy with the shape?"}
-                    </strong>
-                    <p>
-                      {selected?.state === "sliced"
-                        ? "Confirm your printer, material, and clear build plate."
-                        : selected?.state === "submitted"
-                          ? "Command submitted. Follow live progress on your printer."
-                          : "Review your model, then prepare it for printing."}
-                    </p>
-                  </div>
                 </div>
                 <button
                   className="primary make-button"
@@ -1001,13 +980,13 @@ export function App() {
                   <ArrowRight size={16} />
                 </button>
               </div>
-              {!status?.slicer_ready && (
+              {selected && !status?.slicer_ready && (
                 <button
                   className="setup-hint"
                   onClick={() => setSettingsOpen(true)}
                 >
-                  <Settings2 size={12} /> Connect Bambu Studio to enable slicing{" "}
-                  <ArrowRight size={12} />
+                  <Settings2 size={15} /> Set up slicing{" "}
+                  <ArrowRight size={15} />
                 </button>
               )}
             </section>
@@ -1016,14 +995,7 @@ export function App() {
       </main>
 
       {settingsOpen && (
-        <Modal
-          title="Your local connections"
-          onClose={() => setSettingsOpen(false)}
-        >
-          <p className="modal-description">
-            Model and printer configuration live in the backend's .env file.
-            Keys never reach the browser.
-          </p>
+        <Modal title="Connections" onClose={() => setSettingsOpen(false)}>
           <div className="connection-item">
             <WandSparkles size={19} />
             <div>
@@ -1067,9 +1039,8 @@ export function App() {
             </span>
           </div>
           <p className="settings-note">
-            Configured means settings are present, not that a live device
-            connection has been verified. See README.md for setup and printer
-            compatibility.
+            Configuration status does not confirm a live printer connection. See
+            README.md for setup.
           </p>
           {requiresToken ? (
             <>
@@ -1105,10 +1076,7 @@ export function App() {
         </Modal>
       )}
       {helpOpen && (
-        <Modal
-          title="From idea to first layer"
-          onClose={() => setHelpOpen(false)}
-        >
+        <Modal title="Help" onClose={() => setHelpOpen(false)}>
           <ol className="help-steps">
             <li>
               <strong>Describe the object.</strong>
@@ -1120,8 +1088,8 @@ export function App() {
             <li>
               <strong>Explore the shape.</strong>
               <p>
-                Orbit the real CAD model, check its dimensions, and use Refine
-                to create a new revision. Originals are preserved.
+                Drag to orbit, scroll to zoom, and right-drag to pan. Send a
+                message to revise the model; earlier versions stay available.
               </p>
             </li>
             <li>
@@ -1141,7 +1109,9 @@ export function App() {
       )}
       {confirm && selected && (
         <Modal
-          title={confirm === "slice" ? "Approve this model?" : "Make it real?"}
+          title={
+            confirm === "slice" ? "Approve this model?" : "Start printing?"
+          }
           onClose={() => {
             if (!pending) setConfirm(null);
           }}
@@ -1232,5 +1202,50 @@ function Modal({
       </div>
       {children}
     </dialog>
+  );
+}
+
+function ToolPanel({
+  title,
+  compact,
+  children,
+  onClose,
+}: {
+  title: string;
+  compact: boolean;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const trigger = document.activeElement as HTMLElement | null;
+    heading.current?.focus();
+    return () => {
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    };
+  }, [title]);
+  return (
+    <section
+      id="model-tool-panel"
+      className={`tool-panel ${compact ? "compact" : ""}`}
+      role="region"
+      aria-label={title}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <header>
+        <h2 ref={heading} tabIndex={-1}>
+          {title}
+        </h2>
+        <button aria-label="Close model panel" onClick={onClose}>
+          <X size={19} />
+        </button>
+      </header>
+      <div className="tool-panel-body">{children}</div>
+    </section>
   );
 }

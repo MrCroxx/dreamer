@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Download, Terminal } from "lucide-react";
+import { Download } from "lucide-react";
 import { headers } from "./api";
 
 type Entry = {
@@ -45,7 +45,6 @@ function label(entry: Entry) {
 }
 
 export function ModelOutput({ jobId, demo }: { jobId: string; demo: boolean }) {
-  const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [source, setSource] = useState<OutputPage["source"]>("recorded");
   const [active, setActive] = useState(false);
@@ -53,10 +52,8 @@ export function ModelOutput({ jobId, demo }: { jobId: string; demo: boolean }) {
   const [error, setError] = useState("");
   const [follow, setFollow] = useState(true);
   const viewport = useRef<HTMLDivElement>(null);
-  const panelId = `model-output-${jobId}`;
 
   useEffect(() => {
-    if (!open) return;
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let offset = 0;
@@ -103,7 +100,7 @@ export function ModelOutput({ jobId, demo }: { jobId: string; demo: boolean }) {
       abort.abort();
       if (timer) clearTimeout(timer);
     };
-  }, [jobId, open]);
+  }, [jobId]);
 
   useEffect(() => {
     if (follow && viewport.current)
@@ -126,97 +123,79 @@ export function ModelOutput({ jobId, demo }: { jobId: string; demo: boolean }) {
 
   return (
     <section className="model-output">
-      <button
-        className="output-toggle"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen(!open)}
-      >
-        <Terminal size={16} />
-        <span>
-          Model output <small>Optional · Live text & reasoning</small>
-        </span>
-        <ChevronDown size={16} className={open ? "expanded" : ""} />
-      </button>
-      {open && (
-        <div id={panelId} className="output-panel">
-          <div className="output-toolbar">
-            <span role="status">
-              {catchingUp
-                ? "Loading saved output"
-                : active
-                  ? "Receiving model output"
-                  : "Saved output"}
-            </span>
-            <label>
-              <input
-                type="checkbox"
-                checked={follow}
-                onChange={(event) => setFollow(event.target.checked)}
-              />{" "}
-              Follow output
-            </label>
-            <button
-              onClick={download}
-              disabled={!entries.length || catchingUp}
-              aria-label="Download model output"
-            >
-              <Download size={14} /> Download
-            </button>
-          </div>
-          <p className="output-hint">
-            {demo
-              ? "This demo uses a fixed CAD template, not an LLM."
-              : "Shows response text and reasoning when returned by your provider."}
-          </p>
-          {source === "saved_plan" && (
-            <p className="output-hint">
-              The original stream was not recorded for this older job. Showing
-              its saved CAD plan.
-            </p>
-          )}
-          {source === "unavailable" && (
-            <p className="output-hint">
-              No recorded output yet. Older jobs cannot recover a stream that
-              was not recorded.
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="output-hint">
-              {error}
-            </p>
-          )}
-          <div
-            className="output-log"
-            role="region"
-            ref={viewport}
-            tabIndex={0}
-            aria-label="Model output text"
-            onScroll={() => {
-              const element = viewport.current;
-              if (element)
-                setFollow(
-                  element.scrollHeight -
-                    element.scrollTop -
-                    element.clientHeight <
-                    36,
-                );
-            }}
+      <div className="output-panel">
+        <div className="output-toolbar">
+          <span role="status">
+            {catchingUp
+              ? "Loading saved output"
+              : active
+                ? "Receiving model output"
+                : "Saved output"}
+          </span>
+          <label>
+            <input
+              type="checkbox"
+              checked={follow}
+              onChange={(event) => setFollow(event.target.checked)}
+            />{" "}
+            Follow output
+          </label>
+          <button
+            onClick={download}
+            disabled={!entries.length || catchingUp}
+            aria-label="Download model output"
           >
-            {!entries.length && (
-              <p>
-                {active ? "Waiting for model output…" : "No output recorded."}
-              </p>
-            )}
-            {entries.map((entry, index) => (
-              <div className={`output-entry ${entry.kind}`} key={index}>
-                <strong>{label(entry)}</strong>
-                {entry.text && <pre>{entry.text}</pre>}
-              </div>
-            ))}
-          </div>
+            <Download size={14} /> Download
+          </button>
         </div>
-      )}
+        {demo && <p className="output-hint">Demo template; no model call.</p>}
+        {source === "saved_plan" && (
+          <p className="output-hint">
+            The original stream was not recorded for this older job. Showing its
+            saved CAD plan.
+          </p>
+        )}
+        {source === "unavailable" && (
+          <p className="output-hint">
+            No recorded output yet. Older jobs cannot recover a stream that was
+            not recorded.
+          </p>
+        )}
+        {error && (
+          <p role="alert" className="output-hint">
+            {error}
+          </p>
+        )}
+        <div
+          className="output-log"
+          role="region"
+          ref={viewport}
+          tabIndex={0}
+          aria-label="Model output text"
+          onScroll={() => {
+            const element = viewport.current;
+            if (element)
+              setFollow(
+                element.scrollHeight -
+                  element.scrollTop -
+                  element.clientHeight <
+                  36,
+              );
+          }}
+        >
+          {!entries.length && (
+            <p>
+              {active ? "Waiting for model output…" : "No output recorded."}
+            </p>
+          )}
+          {entries.map((entry, index) => (
+            <div className={`output-entry ${entry.kind}`} key={index}>
+              <strong>{label(entry)}</strong>
+              {entry.text && <pre>{entry.text}</pre>}
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

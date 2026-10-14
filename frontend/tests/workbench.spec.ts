@@ -17,20 +17,27 @@ test("build a real demo, preview, download, inspect, and prepare a revision", as
   await expect(page.getByText("Solid model", { exact: true })).toBeVisible({
     timeout: 40_000,
   });
+  await page
+    .getByRole("button", { name: "Model details", exact: true })
+    .click();
   await expect(
     page.locator(".spec-grid").getByText("100 × 65 × 30", { exact: false }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Close model panel" }).click();
   await page.getByRole("button", { name: "Toggle wireframe" }).click();
   await expect(
     page.getByRole("button", { name: "Toggle wireframe" }),
   ).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Toggle wireframe" }).click();
+  await page.getByRole("button", { name: "Export model", exact: true }).click();
   const download = page.waitForEvent("download");
   await page
     .getByRole("button", { name: "Download STEP", exact: true })
     .click();
   expect((await download).suggestedFilename()).toBe("model.step");
-  await page.locator(".model-inspector > summary").click();
+  await page
+    .getByRole("button", { name: "Model details", exact: true })
+    .click();
   await page.getByRole("button", { name: "CAD plan", exact: true }).click();
   await expect(page.locator("pre")).toContainText("operations");
   await page.getByRole("button", { name: "Design notes", exact: true }).click();
@@ -66,7 +73,9 @@ test("mobile workbench builds a curved vase and keeps the primary flow usable", 
   await expect(page.getByText("Solid model", { exact: true })).toBeVisible({
     timeout: 40_000,
   });
-  await page.locator(".model-inspector > summary").click();
+  await page
+    .getByRole("button", { name: "Model details", exact: true })
+    .click();
   await page.getByRole("button", { name: "CAD plan", exact: true }).click();
   await expect(page.locator("pre")).toContainText('"op": "loft"');
   await expect(page.locator("pre")).toContainText('"op": "shell"');
