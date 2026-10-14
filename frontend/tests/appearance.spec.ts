@@ -155,6 +155,7 @@ test("preview colors preserve the canvas, save as versions, and survive refresh 
   ).toBe(true);
   await page.screenshot({ path: "test-results/studio-mobile-chat.png" });
   await page.setViewportSize({ width: 390, height: 568 });
+  await expect(recent).toBeVisible();
   const sendBounds = await page
     .getByRole("button", { name: "Send changes" })
     .boundingBox();

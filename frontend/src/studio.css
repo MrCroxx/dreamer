@@ -922,7 +922,6 @@
   }
 }
 @media (max-width: 760px) and (max-height: 600px) {
-  .studio .mobile-history,
   .studio .chat-heading,
   .studio .revision-banner,
   .studio .prompt-hint {
