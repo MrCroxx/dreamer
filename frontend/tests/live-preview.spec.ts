@@ -55,6 +55,8 @@ endsolid test`;
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/status") return route.fulfill({ json: status });
     if (path === "/api/jobs") return route.fulfill({ json: [job] });
+    if (path.endsWith("/conversation"))
+      return route.fulfill({ json: [{ ...job, summary: null }] });
     if (path === `/api/jobs/${id}/preview`)
       return route.fulfill({
         json: {

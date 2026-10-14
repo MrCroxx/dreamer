@@ -24,6 +24,7 @@ import { api, ApiError, download, token } from "./api";
 import { activeStates, stateLabels, type Job, type Status } from "./types";
 import { Viewer } from "./Viewer";
 import { ModelOutput } from "./ModelOutput";
+import { Conversation } from "./Conversation";
 
 const templates = [
   {
@@ -61,7 +62,10 @@ export function App() {
   );
   const [prompt, setPrompt] = useState("");
   const [images, setImages] = useState<string[]>([]);
-  const [parentId, setParentId] = useState<string | null>(null);
+  const [conversationTip, setConversationTip] = useState<string | null>(() => {
+    const query = new URLSearchParams(window.location.search);
+    return query.get("conversation") || query.get("job");
+  });
   const [demo, setDemo] = useState<Template | null>(null);
   const [pending, setPending] = useState(false);
   const [draftVisible, setDraftVisible] = useState(false);
@@ -87,13 +91,16 @@ export function App() {
       ]);
       setStatus(nextStatus);
       setRequiresToken(nextStatus.auth_required);
+      if (selectedId && !nextJobs.some((job) => job.id === selectedId)) {
+        nextJobs.push(await api<Job>(`/jobs/${selectedId}`));
+      }
       setJobs(nextJobs);
       setConnectionError("");
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) setRequiresToken(true);
       setConnectionError((err as Error).message);
     }
-  }, []);
+  }, [selectedId]);
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), 2200);
@@ -105,24 +112,30 @@ export function App() {
     const url = new URL(window.location.href);
     if (selectedId) url.searchParams.set("job", selectedId);
     else url.searchParams.delete("job");
+    if (conversationTip && conversationTip !== selectedId)
+      url.searchParams.set("conversation", conversationTip);
+    else url.searchParams.delete("conversation");
     window.history.replaceState(null, "", url);
-  }, [selectedId]);
+  }, [selectedId, conversationTip]);
 
   async function generate() {
-    if (!prompt.trim() || pending) return;
+    if (!prompt.trim() || pending || isBusy || (selectedId && !selected))
+      return;
     setPending(true);
     setError("");
     try {
       const job = await api<Job>("/jobs", {
         prompt,
         images,
-        parent_id: parentId,
+        parent_id: selected?.id || null,
         demo_template: demo,
       });
       setJobs((previous) => [job, ...previous]);
       setSelectedId(job.id);
+      setConversationTip(job.id);
       setTab("details");
-      setParentId(null);
+      setPrompt("");
+      setDemo(null);
       setImages([]);
     } catch (err) {
       setError((err as Error).message);
@@ -171,12 +184,22 @@ export function App() {
 
   function newModel() {
     setSelectedId(null);
-    setParentId(null);
+    setConversationTip(null);
     setDemo(null);
     setPrompt("");
     setImages([]);
     setError("");
     promptInput.current?.focus();
+  }
+  function selectVersion(id: string, openConversation = false) {
+    setSelectedId(id);
+    if (openConversation) {
+      setConversationTip(id);
+      setPrompt("");
+      setImages([]);
+    }
+    setDemo(null);
+    setError("");
   }
   function chooseTemplate(
     template: (typeof templates)[number],
@@ -184,7 +207,8 @@ export function App() {
   ) {
     setPrompt(template.prompt);
     setImages([]);
-    setParentId(null);
+    setSelectedId(null);
+    setConversationTip(null);
     setDemo(useDemo ? template.id : null);
     promptInput.current?.focus();
   }
@@ -250,8 +274,7 @@ export function App() {
                 key={job.id}
                 className={`job-item ${job.id === selectedId ? "selected" : ""}`}
                 onClick={() => {
-                  setSelectedId(job.id);
-                  setError("");
+                  selectVersion(job.id, true);
                 }}
               >
                 <span className="job-icon">
@@ -338,7 +361,11 @@ export function App() {
             <select
               aria-label="Select a recent creation"
               value={selectedId || ""}
-              onChange={(event) => setSelectedId(event.target.value || null)}
+              onChange={(event) =>
+                event.target.value
+                  ? selectVersion(event.target.value, true)
+                  : newModel()
+              }
             >
               <option value="">New creation</option>
               {jobs.map((job) => (
@@ -396,19 +423,32 @@ export function App() {
                 </span>
                 <span className="muted">01</span>
               </div>
-              <h2>What are we making?</h2>
+              <h2>
+                {selectedId
+                  ? "Keep shaping your model."
+                  : "What are we making?"}
+              </h2>
               <p className="panel-description">
-                Describe your object. Add dimensions,
-                <br className="desktop-break" /> details, or an image to guide
-                the shape.
+                {selectedId
+                  ? "Ask for a change. Each message creates a new version from the one you are viewing."
+                  : "Describe your object. Add dimensions, details, or an image to guide the shape."}
               </p>
-              {parentId && (
+              {conversationTip && (
+                <Conversation
+                  tipId={conversationTip}
+                  selectedId={selectedId}
+                  refreshKey={
+                    jobs.find((job) => job.id === conversationTip)?.updated_at
+                  }
+                  onSelect={(id) => selectVersion(id)}
+                />
+              )}
+              {selectedId && (
                 <div className="revision-banner">
-                  Refining a previous model
-                  <button
-                    aria-label="Cancel revision"
-                    onClick={() => setParentId(null)}
-                  >
+                  {selected?.model_sha256
+                    ? "Refining a previous model"
+                    : "Continue this conversation"}
+                  <button aria-label="Cancel revision" onClick={newModel}>
                     <X size={13} />
                   </button>
                 </div>
@@ -425,7 +465,9 @@ export function App() {
                   ref={promptInput}
                   aria-label="Describe your model"
                   placeholder={
-                    "A small desk organizer with two\ncompartments, soft rounded edges,\nand a place for all the little things…"
+                    selectedId
+                      ? "Make the walls thicker, add a mounting hole, or describe what to improve…"
+                      : "A small desk organizer with two\ncompartments, soft rounded edges,\nand a place for all the little things…"
                   }
                   value={prompt}
                   maxLength={8000}
@@ -504,6 +546,8 @@ export function App() {
                 disabled={
                   !prompt.trim() ||
                   pending ||
+                  isBusy ||
+                  (!!selectedId && !selected) ||
                   (!!demo && !!images.length) ||
                   (!demo && !status?.llm_ready)
                 }
@@ -516,15 +560,19 @@ export function App() {
                 )}
                 {demo
                   ? "Build demo model"
-                  : parentId
-                    ? "Generate revision"
+                  : selectedId
+                    ? "Send changes"
                     : "Generate model"}
                 <ArrowRight size={17} />
               </button>
               <div className="prompt-hint">
                 {demo
                   ? "A real CAD sample. No LLM call is made."
-                  : "Be specific about size. All dimensions in mm."}
+                  : isBusy
+                    ? "Your version is still running. Send the next change when it finishes."
+                    : selectedId
+                      ? "Previous versions stay available. Attach new references if needed."
+                      : "Be specific about size. All dimensions in mm."}
               </div>
               <div className="ideas-header">
                 <span>A SPARK TO START WITH</span>
@@ -758,9 +806,7 @@ export function App() {
                 <button
                   className="refine-button"
                   onClick={() => {
-                    setParentId(selected.id);
                     setDemo(null);
-                    setPrompt("");
                     promptInput.current?.focus();
                   }}
                 >

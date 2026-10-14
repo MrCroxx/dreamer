@@ -40,10 +40,16 @@ class Service:
                 self.store.transition(
                     job_id, {"queued"}, "generating", "Preparing CAD operations"
                 )
-                previous = (
-                    self.store.get(request.parent_id)["plan"]
-                    if request.parent_id
-                    else None
+                history = (
+                    self.store.lineage(request.parent_id) if request.parent_id else []
+                )
+                previous = next(
+                    (
+                        turn["plan"]
+                        for turn in reversed(history)
+                        if turn["model_sha256"] and turn["plan"]
+                    ),
+                    None,
                 )
                 failure = None
                 for attempt in range(2):
@@ -68,6 +74,7 @@ class Service:
                                     failure,
                                     on_operation=cad.operation,
                                     on_output=output.text,
+                                    history=history,
                                 )
                             (directory / "plan.json").write_text(
                                 plan.model_dump_json(indent=2)

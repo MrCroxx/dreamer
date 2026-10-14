@@ -47,6 +47,8 @@ test("optional output streams text safely, stops polling when closed, and replay
         },
       });
     if (url.pathname === "/api/jobs") return route.fulfill({ json: [job] });
+    if (url.pathname.endsWith("/conversation"))
+      return route.fulfill({ json: [{ ...job, summary: null }] });
     if (url.pathname.endsWith("/preview"))
       return route.fulfill({ json: { active: true, preview: null } });
     if (url.pathname.endsWith("/output")) {

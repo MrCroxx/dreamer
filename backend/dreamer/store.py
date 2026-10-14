@@ -57,6 +57,25 @@ class Store:
             raise KeyError(job_id)
         return self.root / job_id
 
+    def lineage(self, job_id: str) -> list[dict]:
+        turns, seen = [], set()
+        with self.connect() as db:
+            while job_id:
+                if job_id in seen or len(seen) >= 256:
+                    raise Conflict(
+                        "Conversation is too long or invalid; start a new creation"
+                    )
+                seen.add(job_id)
+                row = db.execute(
+                    "SELECT body FROM jobs WHERE id=?", (job_id,)
+                ).fetchone()
+                if row is None:
+                    raise KeyError(job_id)
+                job = json.loads(row[0])
+                turns.append(job)
+                job_id = job["parent_id"]
+        return list(reversed(turns))
+
     def get(self, job_id: str):
         with self.connect() as db:
             row = db.execute("SELECT body FROM jobs WHERE id=?", (job_id,)).fetchone()

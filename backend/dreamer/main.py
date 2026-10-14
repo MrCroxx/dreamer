@@ -125,6 +125,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers={"Cache-Control": "no-store"},
         )
 
+    @app.get("/api/jobs/{job_id}/conversation")
+    async def conversation(job_id: str):
+        return [
+            {
+                **{
+                    key: turn[key]
+                    for key in ("id", "parent_id", "prompt", "name", "state", "error")
+                },
+                "summary": turn["plan"]["description"]
+                if turn["model_sha256"] and turn["plan"]
+                else None,
+            }
+            for turn in store.lineage(job_id)
+        ]
+
     @app.get("/api/jobs/{job_id}/output")
     async def model_output(job_id: str, offset: int = Query(default=0, ge=0)):
         job = store.get(job_id)
@@ -177,8 +192,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def generate(body: GenerateRequest):
         if not body.demo_template and not (settings.llm_api_key and settings.llm_model):
             raise HTTPException(503, "Configure the LLM or select a demo template")
-        if body.parent_id and not store.get(body.parent_id)["plan"]:
-            raise HTTPException(409, "The parent model has no CAD plan to revise")
+        if body.parent_id:
+            parent = store.get(body.parent_id)
+            if parent["state"] in {
+                "queued",
+                "generating",
+                "building",
+                "slicing",
+                "sending",
+            }:
+                raise HTTPException(
+                    409, "Wait for the selected version to finish before continuing"
+                )
+            if len(store.lineage(body.parent_id)) >= 256:
+                raise HTTPException(
+                    409, "Start a new creation after 256 conversation turns"
+                )
         if len(service.tasks) >= 8:
             raise HTTPException(
                 429, "The local job queue is full; wait for a job to finish"

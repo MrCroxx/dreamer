@@ -137,11 +137,20 @@ Secrets stay out of the frontend, API status responses, source control, and appl
 
 1. Describe the part, attach references if useful, and generate a model.
 2. Orbit, pan, zoom, toggle grid/wireframe, inspect dimensions and design assumptions, and download STEP or STL.
-3. **Refine this model** creates a new immutable job from the previous CAD plan.
+3. Continue in the conversation with another instruction or reference image. **Send changes** creates a new immutable version from the version currently being viewed. Select an earlier version in the conversation to branch from it; **New creation** starts a separate design.
 4. **Approve & slice** approves the exact STL hash and invokes Bambu Studio with configured presets.
 5. Download the sliced 3MF or **Send to printer**, review the target and material slot, and explicitly confirm that the physical setup is ready.
 
 Models are represented by validated JSON operations: boxes, cylinders, spheres, extruded polygons, unions, cuts, intersections, translations, rotations, fillets, and chamfers. The backend interprets these operations with CadQuery/OpenCascade. It never executes generated Python, shell commands, or arbitrary file paths from the LLM. Each build runs in a separate process with a deadline. Only one connected, valid solid is accepted. Builds are centered and placed at Z=0; oversized models remain downloadable but cannot be sliced through the app.
+
+Conversations survive refresh through the persisted parent/version links. Follow-up
+requests receive the last successfully built CAD plan, the original brief, and
+recent instructions within a 32,000-character history budget. The latest request
+takes precedence over conflicting earlier requests. Failed turns remain visible
+and can be followed by a correction; their unvalidated geometry is never used as
+the base model. Wait for the selected version to finish before sending its next
+change. Existing versions, downloads, and approval hashes remain unchanged.
+Previously attached images are not retained; reattach a reference when needed.
 
 This initial modeling vocabulary is intended for geometric and functional parts. Organic reconstruction, assemblies, lofts, threads, and guaranteed dimensional reconstruction from a single photo are not supported. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
 

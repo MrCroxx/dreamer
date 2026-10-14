@@ -119,7 +119,7 @@ def test_service_keeps_failed_and_successful_attempt_output(tmp_path, monkeypatc
     job = store.create("test", None, False)
     calls = 0
 
-    async def generate(*args, on_operation, on_output):
+    async def generate(*args, on_operation, on_output, history):
         nonlocal calls
         calls += 1
         on_output("reasoning", f"Attempt {calls} reasoning")

@@ -9,6 +9,30 @@ from .schema import CADPlan, GenerateRequest, Operation
 from .streaming import PlanStream
 
 
+def design_context(history: list[dict]) -> list[dict]:
+    """Keep the original brief and recent requests within a bounded context budget."""
+    if not history:
+        return []
+
+    def compact(turn):
+        return {
+            "request": turn["prompt"],
+            "model_completed": bool(turn.get("model_sha256")),
+        }
+
+    root = compact(history[0])
+    budget = 32_000 - len(json.dumps(root, ensure_ascii=False))
+    recent = []
+    for turn in reversed(history[1:]):
+        entry = compact(turn)
+        size = len(json.dumps(entry, ensure_ascii=False))
+        if size > budget:
+            break
+        budget -= size
+        recent.append(entry)
+    return [root, *reversed(recent)]
+
+
 async def generate_plan(
     settings: Settings,
     request: GenerateRequest,
@@ -16,6 +40,7 @@ async def generate_plan(
     repair: str | None = None,
     on_operation: Callable[[Operation], Awaitable[None]] | None = None,
     on_output: Callable[[str, str], None] | None = None,
+    history: list[dict] | None = None,
 ) -> CADPlan:
     if not settings.llm_api_key or not settings.llm_model:
         raise ValueError(
@@ -35,6 +60,14 @@ Prefer simple functional printable parts. Do not output executable code or file 
 """
     instructions += f"\nUsable build volume: {settings.build_volume}.\nJSON schema: {json.dumps(CADPlan.model_json_schema())}"
     content = [{"type": "text", "text": request.prompt}]
+    if history:
+        content.append(
+            {
+                "type": "text",
+                "text": "Earlier design requests, oldest first (some middle turns may be omitted). The current request overrides conflicting earlier instructions. Unbuilt requests are intent, not existing geometry:\n"
+                + json.dumps(design_context(history), ensure_ascii=False),
+            }
+        )
     if previous:
         content.append(
             {
