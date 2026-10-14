@@ -6,6 +6,7 @@ __pycache__/
 .env.*
 !.env.example
 *.pem
+!backend/dreamer/certs/bambu-ca.pem
 *.key
 data/
 node_modules/

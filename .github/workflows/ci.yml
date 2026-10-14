@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: '0.9.5'
+          enable-cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install CAD runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa
+      - name: Install dependencies
+        run: |
+          uv sync --locked --python 3.12
+          npm --prefix frontend ci
+      - name: Check backend and frontend
+        run: make check
+      - name: Install browser for progressive preview checks
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Check progressive preview in Chromium
+        run: |
+          python3 -m http.server 5174 --bind 127.0.0.1 --directory frontend/dist &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          npm --prefix frontend run test:e2e -- live-preview.spec.ts model-output.spec.ts conversation.spec.ts appearance.spec.ts
+
+  docker:
+    name: Docker build and smoke test
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Choose image reference
+        id: image
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: echo "name=ghcr.io/${REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Build runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+          build-args: VCS_REF=${{ github.sha }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Exercise real CAD, A1 mini slicing, and persistent storage
+        run: python3 scripts/smoke_container.py '${{ steps.image.outputs.name }}:sha-${{ github.sha }}'
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the tested image
+        if: github.event_name == 'push'
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          COMMIT: ${{ github.sha }}
+          BRANCH: ${{ github.ref }}
+        run: |
+          docker push "$IMAGE:sha-$COMMIT"
+          if [ "$BRANCH" = refs/heads/main ]; then
+            docker tag "$IMAGE:sha-$COMMIT" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi

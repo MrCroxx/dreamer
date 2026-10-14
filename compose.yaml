@@ -1,0 +1,41 @@
+services:
+  dreamer:
+    image: ${DREAMER_IMAGE:-dreamer:local}
+    build:
+      context: .
+      args:
+        VCS_REF: ${DREAMER_REVISION:-unknown}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DREAMER_DATA_DIR: /data
+      DREAMER_SLICER_BIN: ${DREAMER_SLICER_BIN:-/usr/local/bin/bambu-studio}
+      DREAMER_MACHINE_PROFILE: ${DREAMER_MACHINE_PROFILE:-/opt/dreamer-profiles/machine.json}
+      DREAMER_PROCESS_PROFILE: ${DREAMER_PROCESS_PROFILE:-/opt/dreamer-profiles/process.json}
+      DREAMER_FILAMENT_PROFILE: ${DREAMER_FILAMENT_PROFILE:-/opt/dreamer-profiles/filament.json}
+    ports:
+      - "${DREAMER_BIND_ADDRESS:-127.0.0.1}:${DREAMER_PORT:-8010}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - dreamer-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 4
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  dreamer-data:

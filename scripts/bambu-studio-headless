@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+# Keep slicer state in a disposable directory on read-only container roots.
+export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-/tmp/dreamer-config}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-/tmp/dreamer-cache}"
+export LIBGL_ALWAYS_SOFTWARE=1
+exec xvfb-run -a /opt/bambu-studio/AppRun --datadir /tmp/dreamer-studio "$@"
