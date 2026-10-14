@@ -1,11 +1,13 @@
 import asyncio
+import json
+import shutil
 
 from . import llm, printer
 from .live_cad import LiveCAD
 from .output import OutputLog
 from .config import Settings
 from .examples import example_plan
-from .schema import GenerateRequest
+from .schema import CADPlan, GenerateRequest
 from .store import Store
 
 
@@ -20,6 +22,7 @@ class Service:
         task = asyncio.create_task(coroutine)
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
+        return task
 
     def error(self, exc: Exception) -> str:
         text = str(exc) or type(exc).__name__
@@ -43,14 +46,15 @@ class Service:
                 history = (
                     self.store.lineage(request.parent_id) if request.parent_id else []
                 )
-                previous = next(
+                previous_job = next(
                     (
-                        turn["plan"]
+                        turn
                         for turn in reversed(history)
                         if turn["model_sha256"] and turn["plan"]
                     ),
                     None,
                 )
+                previous = previous_job["plan"] if previous_job else None
                 failure = None
                 for attempt in range(2):
                     plan = None
@@ -87,7 +91,19 @@ class Service:
                                 plan=plan.model_dump(),
                                 name=plan.name,
                             )
-                            geometry = await cad.finish(plan)
+                            prior = (
+                                CADPlan.model_validate(previous) if previous else None
+                            )
+                            if (
+                                prior
+                                and prior.operations == plan.operations
+                                and prior.result == plan.result
+                            ):
+                                geometry = await self.copy_geometry(
+                                    previous_job, job_id
+                                )
+                            else:
+                                geometry = await cad.finish(plan)
                         geometry["fits_build_volume"] = all(
                             d <= limit + 0.01
                             for d, limit in zip(
@@ -124,6 +140,65 @@ class Service:
                     "Modeling failed",
                     error=self.error(exc),
                 )
+
+    async def copy_geometry(self, parent: dict, job_id: str) -> dict:
+        source = self.store.directory(parent["id"])
+        target = self.store.directory(job_id)
+
+        def copy():
+            if printer.digest(source / "model.stl") != parent["model_sha256"]:
+                raise ValueError(
+                    "The source model changed; regenerate it before revising"
+                )
+            for filename in ("model.stl", "model.step"):
+                shutil.copyfile(source / filename, target / filename)
+            (target / "geometry.json").write_text(json.dumps(parent["geometry"]))
+
+        await asyncio.to_thread(copy)
+        geometry = dict(parent["geometry"])
+        geometry["fits_build_volume"] = all(
+            d <= limit + 0.01
+            for d, limit in zip(geometry["dimensions"], self.settings.build_volume)
+        )
+        return geometry
+
+    async def recolor(self, job_id: str, parent: dict, color: str):
+        try:
+            self.store.transition(
+                job_id, {"queued"}, "building", "Updating preview color"
+            )
+            plan = CADPlan.model_validate(parent["plan"]).model_copy(
+                update={
+                    "color": color,
+                    "description": "Updated the preview color. Geometry and dimensions are unchanged.",
+                }
+            )
+            directory = self.store.directory(job_id)
+            geometry = await self.copy_geometry(parent, job_id)
+            (directory / "plan.json").write_text(plan.model_dump_json(indent=2))
+            async with OutputLog(directory, 1) as output:
+                output.text(
+                    "notice",
+                    "Preview color updated locally. No model provider was called.",
+                )
+            self.store.transition(
+                job_id,
+                {"building"},
+                "preview",
+                "Preview color updated",
+                plan=plan.model_dump(),
+                name=plan.name,
+                geometry=geometry,
+                model_sha256=printer.digest(directory / "model.stl"),
+            )
+        except Exception as exc:
+            self.store.transition(
+                job_id,
+                {"queued", "building"},
+                "failed",
+                "Color update failed",
+                error=self.error(exc),
+            )
 
     async def slice(self, job_id: str):
         async with self.slice_slot:

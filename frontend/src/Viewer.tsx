@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { STLLoader } from "three/addons/loaders/STLLoader.js";
+import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
 import { Expand, Grid2X2, RotateCcw, Box, Layers3 } from "lucide-react";
 import { headers } from "./api";
 
@@ -11,6 +12,7 @@ type Props = {
   buildVolume: number[];
   busy: boolean;
   live?: boolean;
+  color?: string;
   onDraftChange?: (visible: boolean) => void;
 };
 
@@ -20,6 +22,7 @@ export function Viewer({
   buildVolume,
   busy,
   live = false,
+  color = "#dd7652",
   onDraftChange,
 }: Props) {
   const mount = useRef<HTMLDivElement>(null);
@@ -37,6 +40,7 @@ export function Viewer({
   const [wire, setWire] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [width, depth] = buildVolume;
+  const modelMaterial = useRef<THREE.MeshStandardMaterial | null>(null);
 
   useEffect(() => {
     onDraftChange?.(loaded && draftStep !== null);
@@ -72,8 +76,8 @@ export function Viewer({
     controls.maxPolarAngle = Math.PI / 2.02;
     controls.minDistance = 10;
     controls.maxDistance = 1500;
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xa39c8f, 3));
-    const key = new THREE.DirectionalLight(0xffffff, 4);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xa39c8f, 1.8));
+    const key = new THREE.DirectionalLight(0xffffff, 2.5);
     key.position.set(-100, 250, 120);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -83,7 +87,7 @@ export function Viewer({
     key.shadow.camera.bottom = -200;
     key.shadow.bias = -0.0004;
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffd9c2, 1.3);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.8);
     fill.position.set(150, 70, -100);
     scene.add(fill);
     const plate = new THREE.Mesh(
@@ -108,10 +112,11 @@ export function Viewer({
     border.position.copy(plate.position);
     scene.add(border);
     const material = new THREE.MeshStandardMaterial({
-      color: 0xdd7652,
-      roughness: 0.42,
-      metalness: 0.05,
+      color,
+      roughness: 0.6,
+      metalness: 0,
     });
+    modelMaterial.current = material;
     let target = new THREE.Vector3(0, 12, 0);
     let distance = Math.max(width, depth) * 1.25;
     function reset() {
@@ -145,7 +150,10 @@ export function Viewer({
       }
       const geometry = new STLLoader().parse(buffer);
       geometry.rotateX(-Math.PI / 2);
-      geometry.computeVertexNormals();
+      // Smooth tessellated curves while keeping sharp CAD edges in the preview.
+      if (geometry.getAttribute("position").count <= 300_000)
+        toCreasedNormals(geometry);
+      else geometry.computeVertexNormals();
       mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -194,8 +202,13 @@ export function Viewer({
       renderer.domElement.remove();
       actions.current = null;
       updateMesh.current = null;
+      modelMaterial.current = null;
     };
   }, [jobId, width, depth]);
+
+  useEffect(() => {
+    modelMaterial.current?.color.set(color);
+  }, [color, jobId, width, depth]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -267,7 +280,7 @@ export function Viewer({
 
   return (
     <div className="viewer-shell">
-      <div className="viewer-canvas" ref={mount} />
+      <div className="viewer-canvas" ref={mount} data-color={color} />
       <div className="viewer-top">
         <span className="viewer-label">
           <span className={`dot ${loaded ? "green" : ""}`} />

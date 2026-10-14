@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from . import printer
 from .config import Settings
 from .output import read_output
-from .schema import Approval, GenerateRequest
+from .schema import Approval, ColorRequest, GenerateRequest
 from .service import Service
 from .store import Conflict, Store
 
@@ -136,6 +136,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "summary": turn["plan"]["description"]
                 if turn["model_sha256"] and turn["plan"]
                 else None,
+                "color": turn["plan"].get("color") if turn["plan"] else None,
+                "geometry": turn["geometry"],
             }
             for turn in store.lineage(job_id)
         ]
@@ -215,6 +217,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         job = store.create(body.prompt, body.parent_id, bool(body.demo_template))
         service.launch(service.generate(job["id"], body))
         return job
+
+    @app.post("/api/jobs/{job_id}/appearance", status_code=202)
+    async def recolor(job_id: str, body: ColorRequest):
+        parent = store.get(job_id)
+        if parent["state"] in {
+            "queued",
+            "generating",
+            "building",
+            "slicing",
+            "sending",
+        }:
+            raise Conflict("Wait for this version to finish before changing its color")
+        if not parent["model_sha256"] or not parent["plan"]:
+            raise Conflict("A completed model is required before changing its color")
+        if len(store.lineage(job_id)) >= 256:
+            raise Conflict("Start a new creation after 256 conversation turns")
+        if len(service.tasks) >= 8:
+            raise HTTPException(
+                429, "The local job queue is full; wait for a job to finish"
+            )
+        job = store.create(f"Change the preview color to {body.color}.", job_id, False)
+        await asyncio.shield(
+            service.launch(service.recolor(job["id"], parent, body.color))
+        )
+        return store.get(job["id"])
 
     @app.post("/api/jobs/{job_id}/slice", status_code=202)
     async def slice_job(job_id: str, approval: Approval):

@@ -154,6 +154,39 @@ Previously attached images are not retained; reattach a reference when needed.
 
 The modeling vocabulary is intended for geometric and functional parts, including curved housings, vases, routed rods, and axisymmetric parts. Organic reconstruction, assemblies, helical threads, and guaranteed dimensional reconstruction from a single photo are not supported. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
 
+### Conversation workspace and preview color
+
+The workspace pairs a scrollable conversation with the 3D preview. The composer
+stays at the bottom of the conversation; **Enter** sends and **Shift + Enter**
+inserts a newline. IME composition does not submit a message. Text drafts survive
+refresh within the browser tab; image attachments remain in memory only.
+On small screens, switch between **Conversation** and **3D preview**. Model details,
+activity, and the CAD plan are in a collapsible inspector below the preview.
+
+Each response includes a clickable version card with its dimensions and status.
+When viewing an older version, **Back to latest** returns to the conversation tip;
+a new instruction still branches from the version being viewed. The sidebar lists
+conversation tips instead of every intermediate version. Starter templates appear
+only for a new creation.
+
+Ask for a color in the initial prompt or say "Make it blue" in a follow-up. Preview
+colors are validated six-digit RGB values stored with each CAD plan. Geometry
+changes inherit the preceding color when the provider omits it. Appearance-only
+responses can reuse the verified STL and STEP without rebuilding the CAD model.
+The existing model provider chooses whether a request changes only appearance.
+
+The **Preview color** swatches and custom picker update the viewer immediately
+without resetting its camera or display controls. **Save color** creates a new
+version locally, with no LLM call, and leaves the original unchanged. Discard an
+unsaved preview to restore the version's saved color. A new color version must be
+approved separately for slicing; it never inherits an existing print approval.
+
+Color is a single visual material for the whole model. It does not change STL/STEP
+geometry exports, filament selection, or physical print colors. Printing still
+uses the configured material slot and the filament actually loaded. Older models
+without color metadata use the original terracotta preview color. Smoother preview
+normals preserve sharp edges and do not change exported geometry.
+
 ### Curved and hollow parts
 
 These operations use the existing model connection; no additional API, GPU service,

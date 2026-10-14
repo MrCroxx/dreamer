@@ -104,7 +104,9 @@ test("continue revisions, restore a conversation, and branch from an earlier mod
   const send = page.getByRole("button", { name: "Send changes" });
   await expect(conversation).toContainText("Make a small tray");
   await input.fill("Make the walls thicker");
-  await send.click();
+  await input.dispatchEvent("keydown", { key: "Enter", isComposing: true });
+  expect(requests).toHaveLength(0);
+  await input.press("Enter");
   await expect(input).toHaveValue("");
   expect(requests[0].parent_id).toBe(root.id);
   await input.fill("Add a handle");

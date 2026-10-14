@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 import httpx
 
 from .config import Settings
-from .schema import CADPlan, GenerateRequest, Operation
+from .schema import AppearanceUpdate, CADPlan, GenerateRequest, Operation
 from .streaming import PlanStream
 
 
@@ -76,8 +76,36 @@ unaffected dimensions when revising a previous plan. If shell fails on a curved 
 use a separately dimensioned inner loft or revolved wall profile rather than thinning blindly.
 Do not claim this bounded CAD vocabulary can reproduce organic sculptures exactly.
 Do not output executable code or file paths.
+Set color to a six-digit hex RGB value (for example #2563eb) when the user requests
+a color. This is a single preview color, not a filament or multi-material setting.
+Preserve the previous color when changing geometry unless the user requests another.
+When ONLY the preview color changes and a previous valid plan exists, return an
+AppearanceUpdate object instead of repeating CAD operations. Use kind=appearance,
+color, and a short description of the change. Never use an appearance update when
+the user also requests geometry changes. Respond to the user in the description;
+explain what changed concisely, without repeating the full brief.
 """
     instructions += f"\nUsable build volume: {settings.build_volume}.\nJSON schema: {json.dumps(CADPlan.model_json_schema())}"
+    instructions += "\nAlternative appearance-only JSON schema: " + json.dumps(
+        AppearanceUpdate.model_json_schema()
+    )
+
+    def parse_plan(text: str) -> tuple[CADPlan, bool]:
+        data = json.loads(text)
+        if isinstance(data, dict) and data.get("kind") == "appearance":
+            change = AppearanceUpdate.model_validate(data)
+            if previous is None:
+                raise ValueError(
+                    "An appearance update requires an existing valid model"
+                )
+            return CADPlan.model_validate(previous).model_copy(
+                update={"color": change.color, "description": change.description}
+            ), True
+        plan = CADPlan.model_validate(data)
+        if plan.color is None and previous:
+            plan.color = previous.get("color")
+        return plan, False
+
     content = [{"type": "text", "text": request.prompt}]
     if history:
         content.append(
@@ -168,7 +196,7 @@ Do not output executable code or file paths.
                             await on_operation(operation)
                 if not completed:
                     raise ValueError("The model stream ended before completion")
-                return CADPlan.model_validate_json(parser.text)
+                return parse_plan(parser.text)[0]
             await response.aread()
             try:
                 message = response.json()["choices"][0]["message"]
@@ -181,12 +209,12 @@ Do not output executable code or file paths.
                         on_output("reasoning", reasoning)
                     if isinstance(text, str):
                         on_output("content", text)
-                plan = CADPlan.model_validate_json(text)
+                plan, appearance_only = parse_plan(text)
             except (KeyError, IndexError, TypeError) as exc:
                 raise ValueError(
                     "LLM response did not contain a CAD JSON plan"
                 ) from exc
-            if on_operation:
+            if on_operation and not appearance_only:
                 for operation in plan.operations:
                     await on_operation(operation)
             return plan

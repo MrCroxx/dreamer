@@ -24,6 +24,7 @@ export type Job = {
     description: string;
     assumptions: string[];
     operations: { id: string; op: string }[];
+    color?: string | null;
   } | null;
   geometry: {
     dimensions: number[];

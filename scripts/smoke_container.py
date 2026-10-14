@@ -105,7 +105,8 @@ def main():
             time.sleep(0.5)
         assert job["state"] == "preview", job
         assert [operation["op"] for operation in job["plan"]["operations"]] == [
-            "loft", "shell"
+            "loft",
+            "shell",
         ]
         assert job["geometry"]["solids"] == 1
         assert abs(job["geometry"]["dimensions"][2] - 75) < 0.01
@@ -115,6 +116,18 @@ def main():
         assert any(event["kind"] == "content" for event in transcript["entries"])
         assert len(request(endpoint + "/files/model.stl")) > 100
         assert b"ISO-10303-21" in request(endpoint + "/files/model.step")
+        color_job = json.loads(request(endpoint + "/appearance", {"color": "#2563eb"}))
+        assert color_job["state"] == "preview", color_job.get("error")
+        assert color_job["plan"]["color"] == "#2563eb"
+        assert color_job["model_sha256"] == job["model_sha256"]
+        assert color_job["slice_sha256"] is None
+        color_endpoint = "/api/jobs/" + color_job["id"]
+        assert request(color_endpoint + "/files/model.stl") == request(
+            endpoint + "/files/model.stl"
+        )
+        assert request(color_endpoint + "/files/model.step") == request(
+            endpoint + "/files/model.step"
+        )
         request(
             endpoint + "/slice",
             {
@@ -184,6 +197,9 @@ def main():
         assert restored["state"] == "sliced"
         assert restored["model_sha256"] == job["model_sha256"]
         assert json.loads(request(endpoint + "/output")) == transcript
+        restored_color = json.loads(request(color_endpoint))
+        assert restored_color["plan"]["color"] == "#2563eb"
+        assert restored_color["model_sha256"] == job["model_sha256"]
         print(
             "Container smoke passed: UI, authentication, CAD, real A1 mini slicing, disabled dispatch, restart persistence."
         )

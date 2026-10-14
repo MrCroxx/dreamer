@@ -25,6 +25,8 @@ import { activeStates, stateLabels, type Job, type Status } from "./types";
 import { Viewer } from "./Viewer";
 import { ModelOutput } from "./ModelOutput";
 import { Conversation } from "./Conversation";
+import { ColorControls } from "./ColorControls";
+import "./studio.css";
 
 const templates = [
   {
@@ -68,7 +70,20 @@ export function App() {
   const [selectedId, setSelectedId] = useState<string | null>(() =>
     new URLSearchParams(window.location.search).get("job"),
   );
-  const [prompt, setPrompt] = useState("");
+  const [prompt, setPrompt] = useState<string>(() => {
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem("dreamer-draft") || "null",
+      );
+      const query = new URLSearchParams(window.location.search);
+      return typeof saved?.prompt === "string" &&
+        saved?.conversation === (query.get("conversation") || query.get("job"))
+        ? saved.prompt || ""
+        : "";
+    } catch {
+      return "";
+    }
+  });
   const [images, setImages] = useState<string[]>([]);
   const [conversationTip, setConversationTip] = useState<string | null>(() => {
     const query = new URLSearchParams(window.location.search);
@@ -77,6 +92,8 @@ export function App() {
   const [demo, setDemo] = useState<Template | null>(null);
   const [pending, setPending] = useState(false);
   const [draftVisible, setDraftVisible] = useState(false);
+  const [previewColor, setPreviewColor] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<"chat" | "preview">("chat");
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -90,6 +107,47 @@ export function App() {
   const promptInput = useRef<HTMLTextAreaElement>(null);
   const selected = jobs.find((job) => job.id === selectedId);
   const isBusy = !!selected && activeStates.has(selected.state);
+  const creations = jobs.filter(
+    (job) => !jobs.some((child) => child.parent_id === job.id),
+  );
+  const savedColor =
+    selected?.plan?.color ||
+    jobs.find((job) => job.id === selected?.parent_id)?.plan?.color ||
+    "#dd7652";
+  useEffect(() => {
+    setPreviewColor(null);
+  }, [selectedId]);
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        "dreamer-draft",
+        JSON.stringify({ conversation: conversationTip, prompt }),
+      );
+    } catch {
+      /* Draft storage is optional. */
+    }
+    if (promptInput.current) {
+      promptInput.current.style.height = "auto";
+      promptInput.current.style.height = `${Math.min(160, Math.max(76, promptInput.current.scrollHeight))}px`;
+    }
+  }, [prompt, conversationTip]);
+
+  async function saveColor(color: string) {
+    if (!selected || isBusy || pending) return;
+    setPending(true);
+    setError("");
+    try {
+      const job = await api<Job>(`/jobs/${selected.id}/appearance`, { color });
+      setJobs((previous) => [job, ...previous]);
+      setSelectedId(job.id);
+      setConversationTip(job.id);
+      setPreviewColor(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
 
   const refresh = useCallback(async () => {
     try {
@@ -127,7 +185,13 @@ export function App() {
   }, [selectedId, conversationTip]);
 
   async function generate() {
-    if (!prompt.trim() || pending || isBusy || (selectedId && !selected))
+    if (
+      !prompt.trim() ||
+      pending ||
+      isBusy ||
+      (selectedId && !selected) ||
+      (!demo && !status?.llm_ready)
+    )
       return;
     setPending(true);
     setError("");
@@ -142,7 +206,7 @@ export function App() {
       setSelectedId(job.id);
       setConversationTip(job.id);
       setTab("details");
-      setPrompt("");
+      setPrompt((current) => (current === prompt ? "" : current));
       setDemo(null);
       setImages([]);
     } catch (err) {
@@ -197,6 +261,7 @@ export function App() {
     setPrompt("");
     setImages([]);
     setError("");
+    setMobileTab("chat");
     promptInput.current?.focus();
   }
   function selectVersion(id: string, openConversation = false) {
@@ -249,8 +314,13 @@ export function App() {
       );
   }
 
+  function focusComposer() {
+    setMobileTab("chat");
+    requestAnimationFrame(() => promptInput.current?.focus());
+  }
+
   return (
-    <div className="app">
+    <div className={`app studio mobile-${mobileTab}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -273,14 +343,14 @@ export function App() {
         </button>
         <div className="nav-title">
           <Clock3 size={14} /> Recent creations{" "}
-          <span>{jobs.length.toString().padStart(2, "0")}</span>
+          <span>{creations.length.toString().padStart(2, "0")}</span>
         </div>
         <div className="job-list">
           {jobs.length ? (
-            jobs.map((job) => (
+            creations.map((job) => (
               <button
                 key={job.id}
-                className={`job-item ${job.id === selectedId ? "selected" : ""}`}
+                className={`job-item ${job.id === conversationTip ? "selected" : ""}`}
                 onClick={() => {
                   selectVersion(job.id, true);
                 }}
@@ -346,8 +416,13 @@ export function App() {
       <main>
         <header className="topbar">
           <div className="breadcrumb">
-            Workspace <ChevronRight size={13} />
-            <span>{selected?.name || "New creation"}</span>
+            <h1>{selected?.name || "New creation"}</h1>
+            {selected && (
+              <span className={`workspace-state ${isBusy ? "working" : ""}`}>
+                {isBusy && <LoaderCircle size={13} className="spin" />}
+                {stateLabels[selected.state]}
+              </span>
+            )}
           </div>
           <div className="topbar-right">
             <span className="local-pill">
@@ -359,7 +434,7 @@ export function App() {
               aria-label="Open settings"
               onClick={() => setSettingsOpen(true)}
             >
-              M
+              <Settings2 size={17} />
             </button>
           </div>
         </header>
@@ -376,34 +451,37 @@ export function App() {
               }
             >
               <option value="">New creation</option>
-              {jobs.map((job) => (
+              {selected && !creations.some((job) => job.id === selected.id) && (
+                <option value={selected.id}>
+                  {selected.name} · Earlier version
+                </option>
+              )}
+              {creations.map((job) => (
                 <option key={job.id} value={job.id}>
                   {job.name} · {stateLabels[job.state]}
                 </option>
               ))}
             </select>
           </label>
-          <div className="page-heading">
-            <div>
-              <div className="eyebrow">THE IDEA-TO-OBJECT WORKBENCH</div>
-              <h1>
-                From thought to thing<span>.</span>
-              </h1>
-              <p>A few words. A little imagination. Something you can hold.</p>
-            </div>
-            <div className="workflow">
-              <span className="current">
-                <i>1</i> Imagine
-              </span>
-              <span className="workflow-line" />
-              <span className={selected?.model_sha256 ? "current" : ""}>
-                <i>2</i> Refine
-              </span>
-              <span className="workflow-line" />
-              <span className={selected?.slice_sha256 ? "current" : ""}>
-                <i>3</i> Make
-              </span>
-            </div>
+          <div
+            className="mobile-workspace-tabs"
+            role="tablist"
+            aria-label="Workspace panel"
+          >
+            <button
+              role="tab"
+              aria-selected={mobileTab === "chat"}
+              onClick={() => setMobileTab("chat")}
+            >
+              Conversation
+            </button>
+            <button
+              role="tab"
+              aria-selected={mobileTab === "preview"}
+              onClick={() => setMobileTab("preview")}
+            >
+              3D preview {isBusy && <span className="dot green" />}
+            </button>
           </div>
 
           {connectionError && (
@@ -425,22 +503,19 @@ export function App() {
 
           <div className="workbench">
             <section className="composer-panel">
-              <div className="section-label">
-                <span>
-                  <Sparkles size={16} /> THE BRIEF
+              <div className="chat-heading">
+                <span className="chat-avatar">
+                  <Sparkles size={18} />
                 </span>
-                <span className="muted">01</span>
+                <div>
+                  <h2>Design with Dreamer</h2>
+                  <p>
+                    {selectedId
+                      ? "Every change is saved as a version."
+                      : "Describe it. Refine it. Make it."}
+                  </p>
+                </div>
               </div>
-              <h2>
-                {selectedId
-                  ? "Keep shaping your model."
-                  : "What are we making?"}
-              </h2>
-              <p className="panel-description">
-                {selectedId
-                  ? "Ask for a change. Each message creates a new version from the one you are viewing."
-                  : "Describe your object. Add dimensions, details, or an image to guide the shape."}
-              </p>
               {conversationTip && (
                 <Conversation
                   tipId={conversationTip}
@@ -451,175 +526,185 @@ export function App() {
                   onSelect={(id) => selectVersion(id)}
                 />
               )}
-              {selectedId && (
-                <div className="revision-banner">
-                  {selected?.model_sha256
-                    ? "Refining a previous model"
-                    : "Continue this conversation"}
-                  <button aria-label="Cancel revision" onClick={newModel}>
-                    <X size={13} />
-                  </button>
-                </div>
-              )}
-              <div
-                className={`prompt-box ${demo ? "demo-prompt" : ""}`}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  void upload(event.dataTransfer.files);
-                }}
-              >
-                <textarea
-                  ref={promptInput}
-                  aria-label="Describe your model"
-                  placeholder={
-                    selectedId
-                      ? "Make the walls thicker, add a mounting hole, or describe what to improve…"
-                      : "A small desk organizer with two\ncompartments, soft rounded edges,\nand a place for all the little things…"
-                  }
-                  value={prompt}
-                  maxLength={8000}
-                  onChange={(event) => {
-                    setPrompt(event.target.value);
-                    setDemo(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      (event.ctrlKey || event.metaKey) &&
-                      event.key === "Enter"
-                    ) {
-                      event.preventDefault();
-                      void generate();
-                    }
-                  }}
-                />
-                {images.length > 0 && (
-                  <div className="image-list">
-                    {images.map((image, i) => (
-                      <div key={i}>
-                        <img src={image} alt={`Reference ${i + 1}`} />
+              {!conversationTip && (
+                <div className="chat-welcome">
+                  <h3>What would you like to make?</h3>
+                  <p>
+                    Describe an object, add measurements, or attach a reference.
+                    Start with an idea below.
+                  </p>
+                  <div className="ideas-header">
+                    <span>A SPARK TO START WITH</span>
+                    <span>↙</span>
+                  </div>
+                  <div className="template-list">
+                    {templates.map((template) => (
+                      <div className="template-card" key={template.id}>
                         <button
-                          aria-label={`Remove reference ${i + 1}`}
+                          className="template-main"
                           onClick={() =>
-                            setImages((previous) =>
-                              previous.filter((_, index) => index !== i),
-                            )
+                            chooseTemplate(template, !status?.llm_ready)
                           }
                         >
-                          <X size={11} />
+                          <span className={`template-art ${template.id}`}>
+                            <template.icon size={24} strokeWidth={1.2} />
+                          </span>
+                          <span>
+                            <small>{template.tag}</small>
+                            <strong>{template.name}</strong>
+                          </span>
+                          <ArrowRight size={14} />
+                        </button>
+                        <button
+                          className="try-demo"
+                          onClick={() => chooseTemplate(template, true)}
+                        >
+                          Try demo
                         </button>
                       </div>
                     ))}
                   </div>
-                )}
-                <div className="prompt-footer">
-                  <button onClick={() => imageInput.current?.click()}>
-                    <ImagePlus size={15} /> Add reference
-                  </button>
-                  <span>
-                    {images.length
-                      ? `${images.length}/3 images`
-                      : "PNG, JPG, WEBP"}
-                  </span>
                 </div>
-              </div>
-              <input
-                ref={imageInput}
-                hidden
-                type="file"
-                multiple
-                accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => void upload(event.target.files)}
-              />
-              <button
-                type="button"
-                className="model-select"
-                aria-label="Configure model"
-                onClick={() => setSettingsOpen(true)}
-              >
-                <span className="model-icon">
-                  <WandSparkles size={14} />
-                </span>
-                <span>
-                  {demo
-                    ? "Demo template · fixed dimensions"
-                    : status?.llm_ready
-                      ? status.model
-                      : "Connect a model to get started"}
-                </span>
-                <ChevronDown className="model-chevron" size={13} />
-              </button>
-              <button
-                className="primary generate-button"
-                disabled={
-                  !prompt.trim() ||
-                  pending ||
-                  isBusy ||
-                  (!!selectedId && !selected) ||
-                  (!!demo && !!images.length) ||
-                  (!demo && !status?.llm_ready)
-                }
-                onClick={() => void generate()}
-              >
-                {pending ? (
-                  <LoaderCircle className="spin" size={17} />
-                ) : (
-                  <Sparkles size={17} />
-                )}
-                {demo
-                  ? "Build demo model"
-                  : selectedId
-                    ? "Send changes"
-                    : "Generate model"}
-                <ArrowRight size={17} />
-              </button>
-              <div className="prompt-hint">
-                {demo
-                  ? "A real CAD sample. No LLM call is made."
-                  : isBusy
-                    ? "Your version is still running. Send the next change when it finishes."
-                    : selectedId
-                      ? "Previous versions stay available. Attach new references if needed."
-                      : "Be specific about size. All dimensions in mm."}
-              </div>
-              <div className="ideas-header">
-                <span>A SPARK TO START WITH</span>
-                <span>↙</span>
-              </div>
-              <div className="template-list">
-                {templates.map((template) => (
-                  <div className="template-card" key={template.id}>
-                    <button
-                      className="template-main"
-                      onClick={() =>
-                        chooseTemplate(template, !status?.llm_ready)
-                      }
-                    >
-                      <span className={`template-art ${template.id}`}>
-                        <template.icon size={24} strokeWidth={1.2} />
-                      </span>
-                      <span>
-                        <small>{template.tag}</small>
-                        <strong>{template.name}</strong>
-                      </span>
-                      <ArrowRight size={14} />
-                    </button>
-                    <button
-                      className="try-demo"
-                      onClick={() => chooseTemplate(template, true)}
-                    >
-                      Try demo
-                    </button>
+              )}
+              <div className="chat-composer">
+                {selectedId && (
+                  <div className="revision-banner">
+                    <span>
+                      {selectedId !== conversationTip
+                        ? "Editing an earlier version"
+                        : isBusy
+                          ? "Your model is being created"
+                          : "Continue from the version in preview"}
+                    </span>
+                    {selectedId !== conversationTip && conversationTip && (
+                      <button onClick={() => selectVersion(conversationTip)}>
+                        Back to latest
+                      </button>
+                    )}
                   </div>
-                ))}
-              </div>
-              <div className="brief-note">
-                <span>✳</span>
-                <p>
-                  Start simple. Make it yours.
-                  <br />
-                  You can refine the details as you go.
-                </p>
+                )}
+                <div
+                  className={`prompt-box ${demo ? "demo-prompt" : ""}`}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    void upload(event.dataTransfer.files);
+                  }}
+                >
+                  <textarea
+                    ref={promptInput}
+                    aria-label="Describe your model"
+                    placeholder={
+                      selectedId
+                        ? "Make it blue, add a handle, change the dimensions…"
+                        : "Describe your model, dimensions, and color…"
+                    }
+                    value={prompt}
+                    maxLength={8000}
+                    onChange={(event) => {
+                      setPrompt(event.target.value);
+                      setDemo(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.shiftKey &&
+                        !event.nativeEvent.isComposing
+                      ) {
+                        event.preventDefault();
+                        void generate();
+                      }
+                    }}
+                  />
+                  {images.length > 0 && (
+                    <div className="image-list">
+                      {images.map((image, i) => (
+                        <div key={i}>
+                          <img src={image} alt={`Reference ${i + 1}`} />
+                          <button
+                            aria-label={`Remove reference ${i + 1}`}
+                            onClick={() =>
+                              setImages((previous) =>
+                                previous.filter((_, index) => index !== i),
+                              )
+                            }
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="prompt-footer">
+                    <button onClick={() => imageInput.current?.click()}>
+                      <ImagePlus size={15} /> Add reference
+                    </button>
+                    <span>
+                      {images.length
+                        ? `${images.length}/3 images`
+                        : "PNG, JPG, WEBP"}
+                    </span>
+                  </div>
+                </div>
+                <input
+                  ref={imageInput}
+                  hidden
+                  type="file"
+                  multiple
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => void upload(event.target.files)}
+                />
+                <div className="composer-actions">
+                  <button
+                    type="button"
+                    className="model-select"
+                    aria-label="Configure model"
+                    onClick={() => setSettingsOpen(true)}
+                  >
+                    <span className="model-icon">
+                      <WandSparkles size={14} />
+                    </span>
+                    <span>
+                      {demo
+                        ? "Demo template · fixed dimensions"
+                        : status?.llm_ready
+                          ? status.model
+                          : "Connect a model to get started"}
+                    </span>
+                    <ChevronDown className="model-chevron" size={13} />
+                  </button>
+                  <button
+                    className="primary generate-button"
+                    disabled={
+                      !prompt.trim() ||
+                      pending ||
+                      isBusy ||
+                      (!!selectedId && !selected) ||
+                      (!!demo && !!images.length) ||
+                      (!demo && !status?.llm_ready)
+                    }
+                    onClick={() => void generate()}
+                  >
+                    {pending ? (
+                      <LoaderCircle className="spin" size={17} />
+                    ) : (
+                      <Sparkles size={17} />
+                    )}
+                    {demo
+                      ? "Build demo model"
+                      : selectedId
+                        ? "Send changes"
+                        : "Generate model"}
+                    <ArrowRight size={17} />
+                  </button>
+                </div>
+                <div className="prompt-hint" role="status">
+                  {demo
+                    ? "Fixed demo · No model call"
+                    : isBusy
+                      ? "Runs in the background. You can draft your next message."
+                      : "Enter to send · Shift + Enter for a new line"}
+                </div>
               </div>
             </section>
 
@@ -627,14 +712,19 @@ export function App() {
               <div className="preview-heading">
                 <div className="section-label">
                   <span>
-                    <Box size={16} /> THE SHAPE OF YOUR IDEA
+                    <Box size={16} /> Model preview
                   </span>
                 </div>
-                <span className="preview-tag">3D PREVIEW</span>
+                {selected && (
+                  <button className="preview-chat-link" onClick={focusComposer}>
+                    Ask for a change <ArrowRight size={14} />
+                  </button>
+                )}
               </div>
               <Viewer
                 jobId={selected?.id}
                 modelHash={selected?.model_sha256}
+                color={previewColor || savedColor}
                 buildVolume={status?.build_volume || [180, 180, 180]}
                 busy={isBusy}
                 onDraftChange={setDraftVisible}
@@ -720,6 +810,138 @@ export function App() {
                   </div>
                 </div>
               </div>
+              {selected?.model_sha256 && (
+                <ColorControls
+                  key={`${selected.id}-${savedColor}`}
+                  color={savedColor}
+                  disabled={pending || isBusy}
+                  onPreview={setPreviewColor}
+                  onSave={saveColor}
+                />
+              )}
+              {selected && (
+                <details className="model-inspector">
+                  <summary>
+                    Model details & activity <ChevronDown size={15} />
+                  </summary>
+                  <section className="details-panel">
+                    <div className="details-tabs">
+                      <button
+                        className={tab === "details" ? "active" : ""}
+                        onClick={() => setTab("details")}
+                      >
+                        <SlidersHorizontal size={14} /> Design notes
+                      </button>
+                      <button
+                        className={tab === "history" ? "active" : ""}
+                        onClick={() => setTab("history")}
+                      >
+                        <Clock3 size={14} /> Activity
+                      </button>
+                      <button
+                        className={tab === "cad" ? "active" : ""}
+                        onClick={() => setTab("cad")}
+                      >
+                        <Code2 size={14} /> CAD plan
+                      </button>
+                      {selected?.plan && (
+                        <button
+                          className="refine-button"
+                          onClick={() => {
+                            setDemo(null);
+                            promptInput.current?.focus();
+                          }}
+                        >
+                          <WandSparkles size={14} /> Refine this model{" "}
+                          <ArrowRight size={13} />
+                        </button>
+                      )}
+                    </div>
+                    {selected?.error && (
+                      <div role="alert" className="job-error">
+                        {selected.error}
+                      </div>
+                    )}
+                    {tab === "details" && (
+                      <div className="design-notes">
+                        {selected?.plan ? (
+                          <>
+                            <p>{selected.plan.description}</p>
+                            <ul>
+                              {selected.plan.assumptions.map(
+                                (assumption, i) => (
+                                  <li key={i}>{assumption}</li>
+                                ),
+                              )}
+                            </ul>
+                            <div className="original-prompt">
+                              <span>YOUR BRIEF</span>
+                              <p>{selected.prompt}</p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <span className="note-asterisk">✳</span>
+                            <div>
+                              <strong>
+                                Good things take shape, one detail at a time.
+                              </strong>
+                              <p>
+                                Your model's dimensions, design decisions, and
+                                assumptions will appear here.
+                              </p>
+                            </div>
+                            <span className="cad-note">
+                              PARAMETRIC BY NATURE.
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    {tab === "history" && (
+                      <div className="activity-list">
+                        {selected ? (
+                          selected.events.map((event, i) => (
+                            <div key={i}>
+                              <Check size={13} />
+                              <span>{event.message}</span>
+                              <time>
+                                {new Date(event.at).toLocaleTimeString()}
+                              </time>
+                            </div>
+                          ))
+                        ) : (
+                          <p>Your creation's journey will appear here.</p>
+                        )}
+                      </div>
+                    )}
+                    {tab === "cad" && (
+                      <div className="cad-content">
+                        {selected?.plan ? (
+                          <>
+                            <button onClick={() => exportFile("plan.json")}>
+                              <ArrowDownToLine size={14} /> Download CAD plan
+                            </button>
+                            <pre>{JSON.stringify(selected.plan, null, 2)}</pre>
+                          </>
+                        ) : (
+                          <p>
+                            Every creation has an editable, structured CAD plan.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {selected?.slice_sha256 && (
+                      <button
+                        className="download-slice"
+                        onClick={() => exportFile("print.gcode.3mf")}
+                      >
+                        <ArrowDownToLine size={14} /> Download sliced 3MF
+                      </button>
+                    )}
+                  </section>
+                </details>
+              )}
               {selected && (
                 <ModelOutput
                   key={selected.id}
@@ -727,6 +949,7 @@ export function App() {
                   demo={selected.demo}
                 />
               )}
+
               <div className="make-row">
                 <div>
                   <span className="step-dot">3</span>
@@ -789,122 +1012,6 @@ export function App() {
               )}
             </section>
           </div>
-
-          <section className="details-panel">
-            <div className="details-tabs">
-              <button
-                className={tab === "details" ? "active" : ""}
-                onClick={() => setTab("details")}
-              >
-                <SlidersHorizontal size={14} /> Design notes
-              </button>
-              <button
-                className={tab === "history" ? "active" : ""}
-                onClick={() => setTab("history")}
-              >
-                <Clock3 size={14} /> Activity
-              </button>
-              <button
-                className={tab === "cad" ? "active" : ""}
-                onClick={() => setTab("cad")}
-              >
-                <Code2 size={14} /> CAD plan
-              </button>
-              {selected?.plan && (
-                <button
-                  className="refine-button"
-                  onClick={() => {
-                    setDemo(null);
-                    promptInput.current?.focus();
-                  }}
-                >
-                  <WandSparkles size={14} /> Refine this model{" "}
-                  <ArrowRight size={13} />
-                </button>
-              )}
-            </div>
-            {selected?.error && (
-              <div role="alert" className="job-error">
-                {selected.error}
-              </div>
-            )}
-            {tab === "details" && (
-              <div className="design-notes">
-                {selected?.plan ? (
-                  <>
-                    <p>{selected.plan.description}</p>
-                    <ul>
-                      {selected.plan.assumptions.map((assumption, i) => (
-                        <li key={i}>{assumption}</li>
-                      ))}
-                    </ul>
-                    <div className="original-prompt">
-                      <span>YOUR BRIEF</span>
-                      <p>{selected.prompt}</p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="note-asterisk">✳</span>
-                    <div>
-                      <strong>
-                        Good things take shape, one detail at a time.
-                      </strong>
-                      <p>
-                        Your model's dimensions, design decisions, and
-                        assumptions will appear here.
-                      </p>
-                    </div>
-                    <span className="cad-note">PARAMETRIC BY NATURE.</span>
-                  </>
-                )}
-              </div>
-            )}
-            {tab === "history" && (
-              <div className="activity-list">
-                {selected ? (
-                  selected.events.map((event, i) => (
-                    <div key={i}>
-                      <Check size={13} />
-                      <span>{event.message}</span>
-                      <time>{new Date(event.at).toLocaleTimeString()}</time>
-                    </div>
-                  ))
-                ) : (
-                  <p>Your creation's journey will appear here.</p>
-                )}
-              </div>
-            )}
-            {tab === "cad" && (
-              <div className="cad-content">
-                {selected?.plan ? (
-                  <>
-                    <button onClick={() => exportFile("plan.json")}>
-                      <ArrowDownToLine size={14} /> Download CAD plan
-                    </button>
-                    <pre>{JSON.stringify(selected.plan, null, 2)}</pre>
-                  </>
-                ) : (
-                  <p>Every creation has an editable, structured CAD plan.</p>
-                )}
-              </div>
-            )}
-            {selected?.slice_sha256 && (
-              <button
-                className="download-slice"
-                onClick={() => exportFile("print.gcode.3mf")}
-              >
-                <ArrowDownToLine size={14} /> Download sliced 3MF
-              </button>
-            )}
-          </section>
-          <footer className="footer">
-            <span>IMAGINATION, MEET FABRICATION.</span>
-            <span>
-              Designed by you. Built with Dreamer.{" "}
-              <span className="footer-star">✳</span>
-            </span>
-          </footer>
         </div>
       </main>
 

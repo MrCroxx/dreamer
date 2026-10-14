@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-2000, le=2000)]
 Positive = Annotated[float, Field(gt=0, le=1000, allow_inf_nan=False)]
 Vector = tuple[Number, Number, Number]
+HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
 
 
 class StrictModel(BaseModel):
@@ -142,6 +143,7 @@ class CADPlan(StrictModel):
     assumptions: list[str] = Field(default_factory=list, max_length=20)
     operations: list[Operation] = Field(min_length=1, max_length=80)
     result: str
+    color: HexColor | None = None
 
     @model_validator(mode="after")
     def check_graph(self):
@@ -155,6 +157,16 @@ class CADPlan(StrictModel):
         if self.result not in seen:
             raise ValueError("Result must reference an operation")
         return self
+
+
+class AppearanceUpdate(StrictModel):
+    kind: Literal["appearance"]
+    color: HexColor
+    description: str = Field(min_length=1, max_length=2000)
+
+
+class ColorRequest(StrictModel):
+    color: HexColor
 
 
 class GenerateRequest(StrictModel):

@@ -3,7 +3,8 @@ import json
 
 from fastapi.testclient import TestClient
 
-from dreamer import llm
+from dreamer import llm, printer
+from dreamer.cad_worker import build
 from dreamer.config import Settings
 from dreamer.examples import example_plan
 from dreamer.main import create_app
@@ -34,13 +35,16 @@ def test_followup_uses_last_valid_model_and_keeps_failed_intent(tmp_path, monkey
     store = Store(tmp_path)
     plan = example_plan("planter")
     root = store.create("Make a planter", None, False)
+    geometry = build(plan, store.directory(root["id"]))
+    original_hash = printer.digest(store.directory(root["id"]) / "model.stl")
     store.transition(
         root["id"],
         {"queued"},
         "preview",
         "Ready",
         plan=plan.model_dump(),
-        model_sha256="a" * 64,
+        model_sha256=original_hash,
+        geometry=geometry,
     )
     failed = store.create("Add a drain hole", root["id"], False)
     bad_plan = plan.model_dump()
@@ -68,7 +72,7 @@ def test_followup_uses_last_valid_model_and_keeps_failed_intent(tmp_path, monkey
         )
     )
     assert store.get(revision["id"])["state"] == "preview"
-    assert store.get(root["id"])["model_sha256"] == "a" * 64
+    assert store.get(root["id"])["model_sha256"] == original_hash
     assert store.get(failed["id"])["state"] == "failed"
 
 
