@@ -50,13 +50,32 @@ async def generate_plan(
 Use only the supplied schema; return one JSON object, no Markdown. All dimensions are millimeters.
 Primitives are made on XY: box is centered in X/Y with bottom Z=0, cylinder extends from Z=0,
 sphere is centered at the origin, polygon is an XY outline extruded along +Z.
+loft joins 2-12 closed XY sections at strictly increasing absolute z heights. Each section has
+shape circle with radius OR rectangle with size [width, depth], and an optional XY center.
+Use ruled=false for smooth transitions, true for straight transitions between sections.
+revolve rotates a closed polygon of points [radius, z] around the global Z axis. All radii
+must be nonnegative; set angle=360 for a full revolution, or 0<angle<=360 for a sector.
+Use revolve for bowls, stepped shafts, flanges, and axisymmetric hollow parts. A wall profile
+can include its inner and outer boundary in one closed outline; do not cross the rotation axis.
+sweep creates a solid circular rod of radius along a polyline path of 2-32 absolute [x,y,z]
+points, with round corner transitions. Avoid sharp reversals and self-intersections; a pipe
+can be made by subtracting a smaller coaxial sweep with cutters extended beyond the ends.
+shell removes faces selected by >Z, <Z, >X, <X, >Y, or <Y and offsets the remaining faces
+inward by positive thickness. It has exactly one input. Start with >Z for an open-top vessel.
+Wall thickness must be smaller than the local curvature radius and feature clearance.
 translate applies vector; rotate uses vector as axis through origin and angle in degrees.
 Inputs reference earlier node IDs. cut subtracts the second solid from the first.
 Output exactly one connected solid. Use overlapping geometry for unions, sensible wall thickness,
 and conservative fillets. Result will be centered on the build plate and lowered to Z=0.
 Respect requested dimensions. Record inferred dimensions and design limitations in assumptions.
 Images are references, not exact dimensional measurements. Do not pretend to know missing measurements.
-Prefer simple functional printable parts. Do not output executable code or file paths.
+Choose operations that express the intended shape directly: loft for changing cross-sections,
+revolve for axial symmetry, sweep for routed rods, shell for open housings. Prefer fewer
+meaningful operations over stacks of primitives. Preserve the chosen construction and
+unaffected dimensions when revising a previous plan. If shell fails on a curved body,
+use a separately dimensioned inner loft or revolved wall profile rather than thinning blindly.
+Do not claim this bounded CAD vocabulary can reproduce organic sculptures exactly.
+Do not output executable code or file paths.
 """
     instructions += f"\nUsable build volume: {settings.build_volume}.\nJSON schema: {json.dumps(CADPlan.model_json_schema())}"
     content = [{"type": "text", "text": request.prompt}]

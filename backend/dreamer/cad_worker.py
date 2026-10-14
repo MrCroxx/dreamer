@@ -22,6 +22,35 @@ def apply_operation(nodes: dict, op: Operation):
             result = cq.Workplane("XY").sphere(op.radius)
         case "polygon":
             result = cq.Workplane("XY").polyline(op.points).close().extrude(op.height)
+        case "loft":
+            wires = []
+            for section in op.sections:
+                plane = cq.Workplane("XY", origin=(*section.center, section.z))
+                profile = (
+                    plane.circle(section.radius)
+                    if section.shape == "circle"
+                    else plane.rect(*section.size)
+                )
+                wires.append(profile.val())
+            result = cq.Workplane("XY").newObject(
+                [cq.Solid.makeLoft(wires, ruled=op.ruled)]
+            )
+        case "revolve":
+            result = (
+                cq.Workplane("XZ")
+                .polyline(op.points)
+                .close()
+                .revolve(op.angle, (0, 0), (0, 1))
+            )
+        case "sweep":
+            points = [cq.Vector(*point) for point in op.path]
+            path = cq.Wire.makePolygon(points)
+            plane = cq.Plane(origin=points[0], normal=points[1] - points[0])
+            result = (
+                cq.Workplane(plane).circle(op.radius).sweep(path, transition="round")
+            )
+        case "shell":
+            result = inputs[0].faces(op.faces).shell(-op.thickness)
         case "union":
             result = inputs[0]
             for other in inputs[1:]:

@@ -51,6 +51,14 @@ const templates = [
       "Create a cylindrical desktop planter, 72 mm diameter and 65 mm tall, with 3 mm walls and a 6 mm drainage hole.",
     icon: Box,
   },
+  {
+    id: "vase",
+    name: "Contoured vase",
+    tag: "CURVED FORMS",
+    prompt:
+      "Create a smooth open-top vase, 75 mm tall with 2 mm walls. Loft circular sections with radii 22, 28, 16, and 20 mm at heights 0, 20, 50, and 75 mm, then hollow it inward while preserving the base.",
+    icon: WandSparkles,
+  },
 ] as const;
 type Template = (typeof templates)[number]["id"];
 

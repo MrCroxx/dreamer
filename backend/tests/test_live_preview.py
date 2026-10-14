@@ -154,8 +154,9 @@ def test_nonstreaming_json_provider_still_builds(monkeypatch):
     )
 
 
-def test_live_geometry_matches_final_export_and_drafts_are_cleaned(tmp_path):
-    plan = example_plan("planter")
+@pytest.mark.parametrize("template", ["planter", "vase"])
+def test_live_geometry_matches_final_export_and_drafts_are_cleaned(tmp_path, template):
+    plan = example_plan(template)
     baseline = tmp_path / "baseline"
     baseline.mkdir()
     expected = build(plan, baseline)

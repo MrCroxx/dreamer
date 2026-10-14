@@ -46,19 +46,21 @@ test("build a real demo, preview, download, inspect, and prepare a revision", as
   expect(errors).toEqual([]);
 });
 
-test("mobile workbench fits the viewport and keeps the primary flow usable", async ({
+test("mobile workbench builds a curved vase and keeps the primary flow usable", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page
+  await page.locator(".template-card").filter({ hasText: "Contoured vase" })
     .getByRole("button", { name: "Try demo", exact: true })
-    .last()
     .click();
   await page.getByRole("button", { name: "Build demo model" }).click();
   await expect(page.getByText("Solid model", { exact: true })).toBeVisible({
     timeout: 40_000,
   });
+  await page.getByRole("button", { name: "CAD plan", exact: true }).click();
+  await expect(page.locator("pre")).toContainText('"op": "loft"');
+  await expect(page.locator("pre")).toContainText('"op": "shell"');
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

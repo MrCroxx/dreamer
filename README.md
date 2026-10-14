@@ -17,7 +17,7 @@ make run
 
 Open **http://127.0.0.1:8000**. Do not overwrite an existing `.env`. `make run` builds the frontend and serves everything from one backend process. `make dev` starts the API on port 8000 and Vite on port 5174 with live frontend updates. Override the frontend port with `DREAMER_FRONTEND_PORT`.
 
-Without an LLM key, select **Try demo**, then **Build demo model**. The three fixed templates generate real STEP/STL files through CadQuery; they do not interpret text or images and are explicitly marked as demos.
+Without an LLM key, select **Try demo**, then **Build demo model**. The four fixed templates generate real STEP/STL files through CadQuery; they do not interpret text or images and are explicitly marked as demos. **Contoured vase** demonstrates a smooth loft with an open top and 2 mm walls.
 
 ## Docker deployment
 
@@ -141,7 +141,7 @@ Secrets stay out of the frontend, API status responses, source control, and appl
 4. **Approve & slice** approves the exact STL hash and invokes Bambu Studio with configured presets.
 5. Download the sliced 3MF or **Send to printer**, review the target and material slot, and explicitly confirm that the physical setup is ready.
 
-Models are represented by validated JSON operations: boxes, cylinders, spheres, extruded polygons, unions, cuts, intersections, translations, rotations, fillets, and chamfers. The backend interprets these operations with CadQuery/OpenCascade. It never executes generated Python, shell commands, or arbitrary file paths from the LLM. Each build runs in a separate process with a deadline. Only one connected, valid solid is accepted. Builds are centered and placed at Z=0; oversized models remain downloadable but cannot be sliced through the app.
+Models are represented by validated JSON operations: boxes, cylinders, spheres, extruded polygons, lofts, revolutions, circular sweeps, shells, unions, cuts, intersections, translations, rotations, fillets, and chamfers. The backend interprets these operations with CadQuery/OpenCascade. It never executes generated Python, shell commands, or arbitrary file paths from the LLM. Each build runs in a separate process with a deadline. Only one connected, valid solid is accepted. Builds are centered and placed at Z=0; oversized models remain downloadable but cannot be sliced through the app.
 
 Conversations survive refresh through the persisted parent/version links. Follow-up
 requests receive the last successfully built CAD plan, the original brief, and
@@ -152,7 +152,33 @@ the base model. Wait for the selected version to finish before sending its next
 change. Existing versions, downloads, and approval hashes remain unchanged.
 Previously attached images are not retained; reattach a reference when needed.
 
-This initial modeling vocabulary is intended for geometric and functional parts. Organic reconstruction, assemblies, lofts, threads, and guaranteed dimensional reconstruction from a single photo are not supported. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
+The modeling vocabulary is intended for geometric and functional parts, including curved housings, vases, routed rods, and axisymmetric parts. Organic reconstruction, assemblies, helical threads, and guaranteed dimensional reconstruction from a single photo are not supported. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
+
+### Curved and hollow parts
+
+These operations use the existing model connection; no additional API, GPU service,
+or provider key is needed. They work with live drafts, STEP/STL downloads, and
+conversation revisions. Describe the desired dimensions and shape in the brief;
+the LLM chooses operations and records its assumptions.
+
+| Operation | Geometry and parameters | Useful for |
+| --- | --- | --- |
+| `loft` | 2–12 XY sections at strictly increasing absolute `z` values; each has a circle `radius` or rectangle `size: [width, depth]`, with optional XY `center`. `ruled: false` creates smooth transitions; `true` creates straight transitions. | Tapered enclosures, offset transitions, vases |
+| `revolve` | A closed polygon of `[radius, z]` points rotated around global Z by `angle` in degrees, greater than 0 and at most 360. Radii must be nonnegative. | Bowls, flanges, stepped shafts, hollow rotational parts |
+| `sweep` | A solid circle of `radius` swept along 2–32 absolute `[x, y, z]` points, with round corner transitions. | Routed rods and handles; compatible inner sweeps can be subtracted for pipes |
+| `shell` | One input solid; remove the directional face selection `faces` (`>Z`, `<Z`, `>X`, `<X`, `>Y`, `<Y`) and offset inward by positive `thickness`. | Open-top vessels and housings |
+
+For example, ask for a vase with circular sections at specified heights and a
+2 mm wall, then follow up with "Widen the neck to 44 mm and keep the height."
+For a bracket with a routed handle, specify the rod diameter and path points.
+Revolve profiles can describe both sides of a wall in one closed outline.
+
+Smooth lofts can bulge beyond their section sizes; inspect the final dimensions.
+Shelling can fail when wall thickness exceeds local curvature or feature spacing.
+Self-intersecting profiles and tight sweep turns can also fail in the CAD kernel.
+The existing bounded repair attempt can revise the plan; invalid final solids
+are never offered for slicing. These operations do not provide organic mesh
+generation or automatically blend a sculpted mesh with a precise CAD part.
 
 ## Bambu Studio slicing
 

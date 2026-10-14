@@ -43,7 +43,7 @@ def wait_for_job(client, job_id, state):
     raise AssertionError(f"Job did not reach {state}")
 
 
-@pytest.mark.parametrize("template", ["organizer", "bracket", "planter"])
+@pytest.mark.parametrize("template", ["organizer", "bracket", "planter", "vase"])
 def test_real_cad_exports_connected_solids(template, tmp_path):
     geometry = build(example_plan(template), tmp_path)
     assert geometry["solids"] == 1

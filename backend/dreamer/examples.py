@@ -30,6 +30,27 @@ def example_plan(template: str) -> CADPlan:
             {"id": "result", "op": "cut", "inputs": ["first", "hole_two"]},
         ]
         name = "Mounting bracket"
+    elif template == "vase":
+        operations = [
+            {
+                "id": "body",
+                "op": "loft",
+                "sections": [
+                    {"z": 0, "radius": 22},
+                    {"z": 20, "radius": 28},
+                    {"z": 50, "radius": 16},
+                    {"z": 75, "radius": 20},
+                ],
+            },
+            {
+                "id": "result",
+                "op": "shell",
+                "inputs": ["body"],
+                "thickness": 2,
+                "faces": ">Z",
+            },
+        ]
+        name = "Contoured vase"
     elif template == "planter":
         operations = [
             {"id": "outer", "op": "cylinder", "radius": 36, "height": 65},

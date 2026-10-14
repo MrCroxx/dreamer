@@ -92,7 +92,7 @@ def main():
         job = json.loads(
             request(
                 "/api/jobs",
-                {"prompt": "Container smoke test", "demo_template": "planter"},
+                {"prompt": "Container smoke test", "demo_template": "vase"},
             )
         )
         endpoint = "/api/jobs/" + job["id"]
@@ -104,7 +104,12 @@ def main():
             assert job["state"] != "failed", job["error"]
             time.sleep(0.5)
         assert job["state"] == "preview", job
-        assert job["geometry"]["dimensions"] == [72, 72, 65]
+        assert [operation["op"] for operation in job["plan"]["operations"]] == [
+            "loft", "shell"
+        ]
+        assert job["geometry"]["solids"] == 1
+        assert abs(job["geometry"]["dimensions"][2] - 75) < 0.01
+        assert job["geometry"]["fits_build_volume"]
         transcript = json.loads(request(endpoint + "/output"))
         assert transcript["source"] == "recorded" and not transcript["active"]
         assert any(event["kind"] == "content" for event in transcript["entries"])
