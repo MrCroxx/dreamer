@@ -23,6 +23,7 @@ import {
 import { api, ApiError, download, token } from "./api";
 import { activeStates, stateLabels, type Job, type Status } from "./types";
 import { Viewer } from "./Viewer";
+import { ModelOutput } from "./ModelOutput";
 
 const templates = [
   {
@@ -663,6 +664,13 @@ export function App() {
                   </div>
                 </div>
               </div>
+              {selected && (
+                <ModelOutput
+                  key={selected.id}
+                  jobId={selected.id}
+                  demo={selected.demo}
+                />
+              )}
               <div className="make-row">
                 <div>
                   <span className="step-dot">3</span>

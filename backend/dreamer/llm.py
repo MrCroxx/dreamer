@@ -15,6 +15,7 @@ async def generate_plan(
     previous: dict | None,
     repair: str | None = None,
     on_operation: Callable[[Operation], Awaitable[None]] | None = None,
+    on_output: Callable[[str, str], None] | None = None,
 ) -> CADPlan:
     if not settings.llm_api_key or not settings.llm_model:
         raise ValueError(
@@ -94,11 +95,20 @@ Prefer simple functional printable parts. Do not output executable code or file 
                     if not choices:
                         continue
                     choice = choices[0]
+                    delta = choice.get("delta") or {}
+                    if on_output:
+                        reasoning = delta.get("reasoning_content") or delta.get(
+                            "reasoning"
+                        )
+                        if isinstance(reasoning, str) and reasoning:
+                            on_output("reasoning", reasoning)
+                        if isinstance(delta.get("content"), str) and delta["content"]:
+                            on_output("content", delta["content"])
                     reason = choice.get("finish_reason")
                     if reason and reason != "stop":
                         raise ValueError("The model response was incomplete or refused")
                     completed = completed or reason == "stop"
-                    fragment = choice.get("delta", {}).get("content") or ""
+                    fragment = delta.get("content") or ""
                     if not isinstance(fragment, str):
                         raise ValueError("Invalid model content chunk")
                     for operation in parser.feed(fragment):
@@ -109,7 +119,16 @@ Prefer simple functional printable parts. Do not output executable code or file 
                 return CADPlan.model_validate_json(parser.text)
             await response.aread()
             try:
-                text = response.json()["choices"][0]["message"]["content"]
+                message = response.json()["choices"][0]["message"]
+                text = message["content"]
+                if on_output:
+                    reasoning = message.get("reasoning_content") or message.get(
+                        "reasoning"
+                    )
+                    if isinstance(reasoning, str) and reasoning:
+                        on_output("reasoning", reasoning)
+                    if isinstance(text, str):
+                        on_output("content", text)
                 plan = CADPlan.model_validate_json(text)
             except (KeyError, IndexError, TypeError) as exc:
                 raise ValueError(

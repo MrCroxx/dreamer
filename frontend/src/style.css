@@ -1853,3 +1853,97 @@ h1 > span {
   text-align: center;
   pointer-events: none;
 }
+.model-output {
+  border-top: 1px solid #e0e4d8;
+}
+.output-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 17px 24px;
+  border: 0;
+  background: transparent;
+  color: #556249;
+  text-align: left;
+  cursor: pointer;
+}
+.output-toggle span {
+  flex: 1;
+  font-weight: 600;
+}
+.output-toggle small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #879578;
+}
+.output-toggle .expanded {
+  transform: rotate(180deg);
+}
+.output-panel {
+  padding: 0 24px 20px;
+}
+.output-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: #67745b;
+}
+.output-toolbar > span {
+  flex: 1;
+}
+.output-toolbar label,
+.output-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.output-toolbar button {
+  border: 1px solid #dce3d2;
+  border-radius: 5px;
+  padding: 6px 9px;
+  background: #f8faf3;
+  color: inherit;
+  cursor: pointer;
+}
+.output-hint {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #879578;
+  margin: 12px 0;
+}
+.output-log {
+  max-height: 360px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  border: 1px solid #e0e4d8;
+  border-radius: 8px;
+  background: #f5f6ef;
+  color: #4d5845;
+  font-size: 12px;
+}
+.output-entry + .output-entry {
+  margin-top: 18px;
+}
+.output-entry strong {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #879578;
+}
+.output-entry pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font:
+    11px/1.7 ui-monospace,
+    monospace;
+  margin: 8px 0 0;
+}
+.output-entry.notice {
+  color: #a66140;
+}

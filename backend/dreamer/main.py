@@ -7,12 +7,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import printer
 from .config import Settings
+from .output import read_output
 from .schema import Approval, GenerateRequest
 from .service import Service
 from .store import Conflict, Store
@@ -121,6 +122,39 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 pass
         return JSONResponse(
             {"active": job["state"] in {"generating", "building"}, "preview": preview},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/jobs/{job_id}/output")
+    async def model_output(job_id: str, offset: int = Query(default=0, ge=0)):
+        job = store.get(job_id)
+        active = job["state"] in {"queued", "generating", "building"}
+        source = "recorded"
+        try:
+            page = read_output(store.directory(job_id), offset)
+        except FileNotFoundError:
+            source = "saved_plan" if job["plan"] else "unavailable"
+            page = {"entries": [], "offset": 0, "has_more": False}
+            if job["plan"]:
+                page["entries"] = [
+                    {"kind": "content", "text": json.dumps(job["plan"], indent=2)}
+                ]
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        if not active and page["has_more"] and not page["entries"]:
+            page["has_more"] = False
+            page["entries"] = [
+                {
+                    "kind": "notice",
+                    "text": "The last output record was interrupted and could not be recovered.",
+                }
+            ]
+        return JSONResponse(
+            {
+                **page,
+                "source": source,
+                "active": active,
+            },
             headers={"Cache-Control": "no-store"},
         )
 

@@ -105,6 +105,9 @@ def main():
             time.sleep(0.5)
         assert job["state"] == "preview", job
         assert job["geometry"]["dimensions"] == [72, 72, 65]
+        transcript = json.loads(request(endpoint + "/output"))
+        assert transcript["source"] == "recorded" and not transcript["active"]
+        assert any(event["kind"] == "content" for event in transcript["entries"])
         assert len(request(endpoint + "/files/model.stl")) > 100
         assert b"ISO-10303-21" in request(endpoint + "/files/model.step")
         request(
@@ -175,6 +178,7 @@ def main():
         restored = json.loads(request(endpoint))
         assert restored["state"] == "sliced"
         assert restored["model_sha256"] == job["model_sha256"]
+        assert json.loads(request(endpoint + "/output")) == transcript
         print(
             "Container smoke passed: UI, authentication, CAD, real A1 mini slicing, disabled dispatch, restart persistence."
         )

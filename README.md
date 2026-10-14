@@ -116,6 +116,19 @@ are unchanged. Set `DREAMER_LIVE_PREVIEW=false` to avoid draft export costs, or
 `DREAMER_LLM_STREAM=false` for providers without Chat Completions SSE support.
 In the latter case, CAD starts after the complete response arrives.
 
+Expand **Model output** below the viewer to optionally follow the provider's raw
+response text and any returned `reasoning_content` / `reasoning` text. The panel
+is closed by default and only fetches output while open. It supports following
+the latest text, scrolling back, downloading the displayed transcript, and
+replaying output after a page refresh. Attempts and retries remain separate.
+Provider-internal reasoning that is not returned by the API cannot be shown.
+
+Output is recorded in the private job directory, not in application logs, with
+an 8 MB limit per job; reaching the limit does not stop generation. Treat these
+records as part of your private workspace backups. Old jobs have no original
+transcript and can only show their saved CAD plan. Non-streaming providers show
+their output once the response arrives; demos show their fixed template.
+
 LLM calls go directly to the configured base URL, ignoring shell proxy variables so localhost requests and API credentials cannot accidentally be forwarded through a system proxy. If your provider needs a proxy, configure that upstream in LiteLLM.
 
 Secrets stay out of the frontend, API status responses, source control, and application error messages. Prompts and generated plans are persisted under `data/`. Images are transmitted to the configured LLM and held in memory only; they are not retained in the job history. Refinements receive the previous CAD plan and newly attached images, not old image attachments.

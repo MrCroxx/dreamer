@@ -2,6 +2,7 @@ import asyncio
 
 from . import llm, printer
 from .live_cad import LiveCAD
+from .output import OutputLog
 from .config import Settings
 from .examples import example_plan
 from .schema import GenerateRequest
@@ -52,9 +53,11 @@ class Service:
                         async with (
                             asyncio.timeout(180 + self.settings.cad_timeout),
                             LiveCAD(directory, self.settings) as cad,
+                            OutputLog(directory, attempt + 1) as output,
                         ):
                             if request.demo_template:
                                 plan = example_plan(request.demo_template)
+                                output.text("content", plan.model_dump_json(indent=2))
                                 for operation in plan.operations:
                                     await cad.operation(operation)
                             else:
@@ -64,6 +67,7 @@ class Service:
                                     previous,
                                     failure,
                                     on_operation=cad.operation,
+                                    on_output=output.text,
                                 )
                             (directory / "plan.json").write_text(
                                 plan.model_dump_json(indent=2)

@@ -45,7 +45,7 @@ jobs:
           python3 -m http.server 5174 --bind 127.0.0.1 --directory frontend/dist &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
-          npm --prefix frontend run test:e2e -- live-preview.spec.ts
+          npm --prefix frontend run test:e2e -- live-preview.spec.ts model-output.spec.ts
 
   docker:
     name: Docker build and smoke test
