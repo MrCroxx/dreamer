@@ -1838,3 +1838,18 @@ h1 > span {
     font-size: 9px;
   }
 }
+.draft-notice {
+  position: absolute;
+  bottom: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #fff8e9e8;
+  color: #786344;
+  font-size: 12px;
+  text-align: center;
+  pointer-events: none;
+}

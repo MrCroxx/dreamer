@@ -102,6 +102,20 @@ DREAMER_LLM_MODEL=your-vision-capable-model
 
 The provider must support `/chat/completions` and `response_format: {"type":"json_object"}`. Image requests use inline base64 image content; the configured alias must route to a vision-capable model. A text-only model cannot interpret reference images. Images are limited to three PNG/JPEG/WebP files, each at most 5 MB and 16 megapixels. The backend validates the actual image bytes.
 
+Streaming is enabled by default. Complete, validated CAD operations are built as
+the response arrives, so the viewer can show a **Live draft** before generation
+finishes. The first draft requires a complete operation; provider reasoning time
+still appears as a wait. Draft updates preserve the camera, grid, and wireframe.
+Only the completed, validated model can be approved for slicing.
+
+One CAD worker evaluates each operation once. Draft meshes use independent
+geometry copies and coarse tessellation, at most once every 1.5 seconds and eight
+times per attempt, with a 4 MB limit per mesh. This adds some CPU, memory, and
+network overhead; final STL/STEP precision, validation, and LLM quality settings
+are unchanged. Set `DREAMER_LIVE_PREVIEW=false` to avoid draft export costs, or
+`DREAMER_LLM_STREAM=false` for providers without Chat Completions SSE support.
+In the latter case, CAD starts after the complete response arrives.
+
 LLM calls go directly to the configured base URL, ignoring shell proxy variables so localhost requests and API credentials cannot accidentally be forwarded through a system proxy. If your provider needs a proxy, configure that upstream in LiteLLM.
 
 Secrets stay out of the frontend, API status responses, source control, and application error messages. Prompts and generated plans are persisted under `data/`. Images are transmitted to the configured LLM and held in memory only; they are not retained in the job history. Refinements receive the previous CAD plan and newly attached images, not old image attachments.

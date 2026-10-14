@@ -63,6 +63,7 @@ export function App() {
   const [parentId, setParentId] = useState<string | null>(null);
   const [demo, setDemo] = useState<Template | null>(null);
   const [pending, setPending] = useState(false);
+  const [draftVisible, setDraftVisible] = useState(false);
   const [error, setError] = useState("");
   const [connectionError, setConnectionError] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -579,6 +580,11 @@ export function App() {
                 modelHash={selected?.model_sha256}
                 buildVolume={status?.build_volume || [180, 180, 180]}
                 busy={isBusy}
+                onDraftChange={setDraftVisible}
+                live={
+                  selected?.state === "generating" ||
+                  selected?.state === "building"
+                }
               />
               <div className="model-info">
                 <div className="model-title">
@@ -681,6 +687,7 @@ export function App() {
                   className="primary make-button"
                   disabled={
                     pending ||
+                    draftVisible ||
                     !selected ||
                     (selected.state !== "preview" &&
                       selected.state !== "sliced") ||
@@ -864,7 +871,10 @@ export function App() {
             <Layers3 size={19} />
             <div>
               <strong>Bambu Studio CLI</strong>
-              <p>{status?.slicing_presets?.join(" · ") || "Machine, process & filament presets"}</p>
+              <p>
+                {status?.slicing_presets?.join(" · ") ||
+                  "Machine, process & filament presets"}
+              </p>
             </div>
             <span
               className={`connection-state ${status?.slicer_ready ? "ready" : ""}`}
@@ -976,7 +986,10 @@ export function App() {
             <strong>{selected.name}</strong>
             <span>{selected.geometry?.dimensions.join(" × ")} mm</span>
             <span>{status?.printer}</span>
-            {confirm === "slice" && status?.slicing_presets?.map((preset) => <span key={preset}>{preset}</span>)}
+            {confirm === "slice" &&
+              status?.slicing_presets?.map((preset) => (
+                <span key={preset}>{preset}</span>
+              ))}
             <span>
               {status?.bed_type} · Filament slot {status?.filament_slot}
             </span>

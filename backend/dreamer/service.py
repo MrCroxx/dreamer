@@ -1,11 +1,7 @@
 import asyncio
-import json
-import os
-import sys
-from pathlib import Path
 
 from . import llm, printer
-from .commands import run_command
+from .live_cad import LiveCAD
 from .config import Settings
 from .examples import example_plan
 from .schema import GenerateRequest
@@ -52,38 +48,35 @@ class Service:
                 for attempt in range(2):
                     plan = None
                     try:
-                        plan = (
-                            example_plan(request.demo_template)
-                            if request.demo_template
-                            else await llm.generate_plan(
-                                self.settings, request, previous, failure
-                            )
-                        )
                         directory = self.store.directory(job_id)
-                        (directory / "plan.json").write_text(
-                            plan.model_dump_json(indent=2)
-                        )
-                        self.store.transition(
-                            job_id,
-                            {"generating", "building"},
-                            "building",
-                            "Building and validating the solid",
-                            plan=plan.model_dump(),
-                            name=plan.name,
-                        )
-                        env = os.environ.copy()
-                        env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
-                        await run_command(
-                            [
-                                sys.executable,
-                                "-m",
-                                "dreamer.cad_worker",
-                                str(directory),
-                            ],
-                            self.settings.cad_timeout,
-                            env=env,
-                        )
-                        geometry = json.loads((directory / "geometry.json").read_text())
+                        async with (
+                            asyncio.timeout(180 + self.settings.cad_timeout),
+                            LiveCAD(directory, self.settings) as cad,
+                        ):
+                            if request.demo_template:
+                                plan = example_plan(request.demo_template)
+                                for operation in plan.operations:
+                                    await cad.operation(operation)
+                            else:
+                                plan = await llm.generate_plan(
+                                    self.settings,
+                                    request,
+                                    previous,
+                                    failure,
+                                    on_operation=cad.operation,
+                                )
+                            (directory / "plan.json").write_text(
+                                plan.model_dump_json(indent=2)
+                            )
+                            self.store.transition(
+                                job_id,
+                                {"generating", "building"},
+                                "building",
+                                "Building and validating the solid",
+                                plan=plan.model_dump(),
+                                name=plan.name,
+                            )
+                            geometry = await cad.finish(plan)
                         geometry["fits_build_volume"] = all(
                             d <= limit + 0.01
                             for d, limit in zip(

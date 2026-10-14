@@ -10,10 +10,23 @@ type Props = {
   modelHash?: string | null;
   buildVolume: number[];
   busy: boolean;
+  live?: boolean;
+  onDraftChange?: (visible: boolean) => void;
 };
 
-export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
+export function Viewer({
+  jobId,
+  modelHash,
+  buildVolume,
+  busy,
+  live = false,
+  onDraftChange,
+}: Props) {
   const mount = useRef<HTMLDivElement>(null);
+  const updateMesh = useRef<((buffer: ArrayBuffer | null) => void) | null>(
+    null,
+  );
+  const [draftStep, setDraftStep] = useState<number | null>(null);
   const actions = useRef<{
     reset: () => void;
     grid: () => void;
@@ -24,6 +37,10 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
   const [wire, setWire] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [width, depth] = buildVolume;
+
+  useEffect(() => {
+    onDraftChange?.(loaded && draftStep !== null);
+  }, [loaded, draftStep, onDraftChange]);
 
   useEffect(() => {
     const element = mount.current;
@@ -114,36 +131,35 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
         material.wireframe = !material.wireframe;
       },
     };
-    const abort = new AbortController();
-    if (jobId && modelHash) {
-      fetch(`/api/jobs/${jobId}/files/model.stl`, {
-        headers: headers(),
-        signal: abort.signal,
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error("Unable to load the model");
-          return response.arrayBuffer();
-        })
-        .then((buffer) => {
-          if (abort.signal.aborted) return;
-          const geometry = new STLLoader().parse(buffer);
-          geometry.rotateX(-Math.PI / 2);
-          geometry.computeVertexNormals();
-          const mesh = new THREE.Mesh(geometry, material);
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          scene.add(mesh);
-          const bounds = new THREE.Box3().setFromObject(mesh);
-          target = bounds.getCenter(new THREE.Vector3());
-          const size = bounds.getSize(new THREE.Vector3());
-          distance = Math.max(size.x, size.y, size.z, 45) * 1.6;
-          reset();
-          setLoaded(true);
-        })
-        .catch((err: Error) => {
-          if (err.name !== "AbortError") setError(err.message);
-        });
-    }
+    let mesh: THREE.Mesh | null = null;
+    let fitted = false;
+    updateMesh.current = (buffer) => {
+      if (mesh) {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+        mesh = null;
+      }
+      if (!buffer) {
+        setLoaded(false);
+        return;
+      }
+      const geometry = new STLLoader().parse(buffer);
+      geometry.rotateX(-Math.PI / 2);
+      geometry.computeVertexNormals();
+      mesh = new THREE.Mesh(geometry, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      const bounds = new THREE.Box3().setFromObject(mesh);
+      target = bounds.getCenter(new THREE.Vector3());
+      const size = bounds.getSize(new THREE.Vector3());
+      distance = Math.max(size.x, size.y, size.z, 45) * 1.6;
+      if (!fitted) {
+        reset();
+        fitted = true;
+      }
+      setLoaded(true);
+    };
     const resize = new ResizeObserver(() => {
       const w = element.clientWidth,
         h = element.clientHeight;
@@ -158,7 +174,6 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
       renderer.render(scene, camera);
     });
     return () => {
-      abort.abort();
       resize.disconnect();
       controls.dispose();
       renderer.setAnimationLoop(null);
@@ -178,8 +193,77 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
       renderer.dispose();
       renderer.domElement.remove();
       actions.current = null;
+      updateMesh.current = null;
     };
-  }, [jobId, modelHash, width, depth]);
+  }, [jobId, width, depth]);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let revision: string | null = null;
+    setError("");
+    if (!modelHash) setDraftStep(null);
+    async function load(path: string) {
+      const response = await fetch(path, {
+        headers: headers(),
+        signal: abort.signal,
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Unable to load the model");
+      const buffer = await response.arrayBuffer();
+      if (!abort.signal.aborted) updateMesh.current?.(buffer);
+    }
+    async function poll() {
+      try {
+        const response = await fetch(`/api/jobs/${jobId}/preview`, {
+          headers: headers(),
+          signal: abort.signal,
+          cache: "no-store",
+        });
+        if (!response.ok)
+          throw new Error(
+            "Live preview is temporarily unavailable. The final model will appear when ready.",
+          );
+        const data = (await response.json()) as {
+          active: boolean;
+          preview: { revision: string; operations: number } | null;
+        };
+        if (abort.signal.aborted) return;
+        if (data.preview && data.preview.revision !== revision) {
+          await load(`/api/jobs/${jobId}/preview/${data.preview.revision}`);
+          if (abort.signal.aborted) return;
+          revision = data.preview.revision;
+          setDraftStep(data.preview.operations);
+        } else if (!data.preview && data.active && revision) {
+          updateMesh.current?.(null);
+          revision = null;
+          setDraftStep(null);
+        }
+        setError("");
+      } catch (err) {
+        if (!abort.signal.aborted) setError((err as Error).message);
+      } finally {
+        if (!abort.signal.aborted) timer = setTimeout(() => void poll(), 1000);
+      }
+    }
+    if (jobId && modelHash) {
+      void load(`/api/jobs/${jobId}/files/model.stl`)
+        .then(() => {
+          if (!abort.signal.aborted) setDraftStep(null);
+        })
+        .catch((err: Error) => {
+          if (!abort.signal.aborted) setError(err.message);
+        });
+    } else if (jobId && live) {
+      void poll();
+    } else {
+      updateMesh.current?.(null);
+    }
+    return () => {
+      abort.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [jobId, modelHash, live, width, depth]);
 
   return (
     <div className="viewer-shell">
@@ -188,7 +272,9 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
         <span className="viewer-label">
           <span className={`dot ${loaded ? "green" : ""}`} />
           {loaded
-            ? "Solid model"
+            ? draftStep !== null
+              ? `Live draft · Step ${draftStep}`
+              : "Solid model"
             : busy
               ? "Creating your model"
               : "Your build plate"}
@@ -217,12 +303,17 @@ export function Viewer({ jobId, modelHash, buildVolume, busy }: Props) {
             <Box size={36} strokeWidth={1.4} />
           </div>
           <h2>Giving your idea shape.</h2>
-          <p>Building a real, editable CAD solid.</p>
+          <p>Completed steps will appear here as the model takes shape.</p>
         </div>
       )}
       {error && (
         <div role="alert" className="viewer-error">
           {error}
+        </div>
+      )}
+      {draftStep !== null && loaded && (
+        <div className="draft-notice" role="status">
+          Live draft · Final geometry is still being validated
         </div>
       )}
       <div className="viewer-bottom">

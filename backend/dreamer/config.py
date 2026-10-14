@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.openai.com/v1"
     llm_api_key: str = ""
     llm_model: str = ""
+    llm_stream: bool = True
+    live_preview: bool = True
     api_token: str = ""
     allowed_origins: list[str] = [
         "http://127.0.0.1:5173",

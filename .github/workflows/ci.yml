@@ -37,6 +37,15 @@ jobs:
           npm --prefix frontend ci
       - name: Check backend and frontend
         run: make check
+      - name: Install browser for progressive preview checks
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Check progressive preview in Chromium
+        run: |
+          python3 -m http.server 5174 --bind 127.0.0.1 --directory frontend/dist &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          npm --prefix frontend run test:e2e -- live-preview.spec.ts
 
   docker:
     name: Docker build and smoke test

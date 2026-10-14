@@ -1,9 +1,12 @@
+import asyncio
 import json
+from collections.abc import Awaitable, Callable
 
 import httpx
 
 from .config import Settings
-from .schema import CADPlan, GenerateRequest
+from .schema import CADPlan, GenerateRequest, Operation
+from .streaming import PlanStream
 
 
 async def generate_plan(
@@ -11,6 +14,7 @@ async def generate_plan(
     request: GenerateRequest,
     previous: dict | None,
     repair: str | None = None,
+    on_operation: Callable[[Operation], Awaitable[None]] | None = None,
 ) -> CADPlan:
     if not settings.llm_api_key or not settings.llm_model:
         raise ValueError(
@@ -49,10 +53,14 @@ Prefer simple functional printable parts. Do not output executable code or file 
     content.extend(
         {"type": "image_url", "image_url": {"url": image}} for image in request.images
     )
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(180, connect=10), trust_env=False
-    ) as client:
-        response = await client.post(
+    async with (
+        asyncio.timeout(180),
+        httpx.AsyncClient(
+            timeout=httpx.Timeout(180, connect=10), trust_env=False
+        ) as client,
+    ):
+        async with client.stream(
+            "POST",
             settings.llm_base_url.rstrip("/") + "/chat/completions",
             headers={"Authorization": f"Bearer {settings.llm_api_key}"},
             json={
@@ -62,16 +70,52 @@ Prefer simple functional printable parts. Do not output executable code or file 
                     {"role": "user", "content": content},
                 ],
                 "response_format": {"type": "json_object"},
+                "stream": settings.llm_stream,
             },
-        )
-        if response.is_error:
-            raise ValueError(
-                f"LLM returned HTTP {response.status_code}. Check the model alias, API credentials and vision/JSON support."
-            )
-        try:
-            text = response.json()["choices"][0]["message"]["content"]
-            if not isinstance(text, str):
-                raise ValueError("Model returned no text")
-            return CADPlan.model_validate_json(text)
-        except (KeyError, IndexError, TypeError) as exc:
-            raise ValueError("LLM response did not contain a CAD JSON plan") from exc
+        ) as response:
+            if response.is_error:
+                raise ValueError(
+                    f"LLM returned HTTP {response.status_code}. Check model credentials and JSON/streaming support."
+                )
+            parser = PlanStream()
+            if "text/event-stream" in response.headers.get("content-type", ""):
+                completed = False
+                async for line in response.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        completed = True
+                        break
+                    chunk = json.loads(data)
+                    if chunk.get("error"):
+                        raise ValueError("The model stream reported an error")
+                    choices = chunk.get("choices") or []
+                    if not choices:
+                        continue
+                    choice = choices[0]
+                    reason = choice.get("finish_reason")
+                    if reason and reason != "stop":
+                        raise ValueError("The model response was incomplete or refused")
+                    completed = completed or reason == "stop"
+                    fragment = choice.get("delta", {}).get("content") or ""
+                    if not isinstance(fragment, str):
+                        raise ValueError("Invalid model content chunk")
+                    for operation in parser.feed(fragment):
+                        if on_operation:
+                            await on_operation(operation)
+                if not completed:
+                    raise ValueError("The model stream ended before completion")
+                return CADPlan.model_validate_json(parser.text)
+            await response.aread()
+            try:
+                text = response.json()["choices"][0]["message"]["content"]
+                plan = CADPlan.model_validate_json(text)
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ValueError(
+                    "LLM response did not contain a CAD JSON plan"
+                ) from exc
+            if on_operation:
+                for operation in plan.operations:
+                    await on_operation(operation)
+            return plan

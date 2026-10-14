@@ -1,12 +1,14 @@
 import asyncio
 import fcntl
 import hmac
+import json
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import printer
@@ -105,6 +107,37 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/jobs/{job_id}")
     async def get_job(job_id: str):
         return store.get(job_id)
+
+    @app.get("/api/jobs/{job_id}/preview")
+    async def draft_status(job_id: str):
+        job = store.get(job_id)
+        preview = None
+        if job["state"] in {"generating", "building"}:
+            try:
+                preview = json.loads(
+                    (store.directory(job_id) / "preview.json").read_text()
+                )
+            except FileNotFoundError:
+                pass
+        return JSONResponse(
+            {"active": job["state"] in {"generating", "building"}, "preview": preview},
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/api/jobs/{job_id}/preview/{revision}")
+    async def draft_mesh(job_id: str, revision: str):
+        job = store.get(job_id)
+        if job["state"] not in {"generating", "building"} or not re.fullmatch(
+            r"[a-f0-9]{32}-[0-9]{1,2}", revision
+        ):
+            raise HTTPException(404, "Draft preview is no longer available")
+        try:
+            data = (store.directory(job_id) / f"preview-{revision}.stl").read_bytes()
+        except FileNotFoundError as exc:
+            raise HTTPException(404, "Draft preview is no longer available") from exc
+        return Response(
+            data, media_type="model/stl", headers={"Cache-Control": "no-store"}
+        )
 
     @app.post("/api/jobs", status_code=202)
     async def generate(body: GenerateRequest):
