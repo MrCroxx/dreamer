@@ -14,6 +14,7 @@ class LiveCAD:
         self.process = None
         self.reader = None
         self.tail = bytearray()
+        self.operations = []
 
     async def __aenter__(self):
         self.clear()
@@ -51,6 +52,7 @@ class LiveCAD:
             )
 
     async def operation(self, op):
+        self.operations.append(op.model_dump(exclude_defaults=True, exclude_none=True))
         await self.write(
             {"operation": op.model_dump(), "preview": self.settings.live_preview}
         )

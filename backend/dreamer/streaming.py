@@ -2,7 +2,7 @@
 
 import json
 
-from .schema import Operation
+from .schema import MAX_OPERATIONS, Operation
 
 
 class PlanStream:
@@ -52,7 +52,7 @@ class PlanStream:
                 elif self.state == "operation":
                     op = Operation.model_validate(value)
                     if (
-                        len(self.seen) >= 80
+                        len(self.seen) >= MAX_OPERATIONS
                         or op.id in self.seen
                         or any(ref not in self.seen for ref in op.inputs)
                     ):

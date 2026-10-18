@@ -37,5 +37,6 @@ class Settings(BaseSettings):
     printer_access_code: str = ""
     printer_ca_file: str = str(Path(__file__).with_name("certs") / "bambu-ca.pem")
     build_volume: tuple[float, float, float] = (180, 180, 180)
-    cad_timeout: int = Field(default=90, ge=1)
+    cad_timeout: int = Field(default=180, ge=1, le=900)
+    model_attempts: int = Field(default=3, ge=1, le=5)
     command_timeout: int = Field(default=300, ge=1)

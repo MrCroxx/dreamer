@@ -89,3 +89,27 @@ test("mobile workbench builds a curved vase and keeps the primary flow usable", 
     fullPage: true,
   });
 });
+
+test("engraved nameplate demo exposes pattern and lettering operations", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .locator(".template-card")
+    .filter({ hasText: "Engraved nameplate" })
+    .getByRole("button", { name: "Try demo", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Build demo model" }).click();
+  await expect(page.getByText("Solid model", { exact: true })).toBeVisible({
+    timeout: 40_000,
+  });
+  await expect(page.locator(".model-size")).toContainText("90 × 36 × 4.8 mm");
+  await page
+    .getByRole("button", { name: "Model details", exact: true })
+    .click();
+  await page.getByRole("button", { name: "CAD plan", exact: true }).click();
+  for (const operation of ["engrave", "emboss", "linear_pattern"])
+    await expect(page.locator(".cad-content")).toContainText(
+      `"op": "${operation}"`,
+    );
+});

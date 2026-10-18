@@ -8,10 +8,11 @@ from pathlib import Path
 
 import cadquery as cq
 
-from .schema import CADPlan, Operation
+from .schema import MAX_INSTANCES, MAX_OPERATIONS, CADPlan, Operation
+from .features import apply_feature
 
 
-def apply_operation(nodes: dict, op: Operation):
+def _construct(nodes: dict, op: Operation):
     inputs = [nodes[key] for key in op.inputs]
     match op.op:
         case "box":
@@ -44,8 +45,12 @@ def apply_operation(nodes: dict, op: Operation):
             )
         case "sweep":
             points = [cq.Vector(*point) for point in op.path]
-            path = cq.Wire.makePolygon(points)
-            plane = cq.Plane(origin=points[0], normal=points[1] - points[0])
+            path = (
+                cq.Wire.assembleEdges([cq.Edge.makeSpline(points)])
+                if op.smooth
+                else cq.Wire.makePolygon(points)
+            )
+            plane = cq.Plane(origin=points[0], normal=path.tangentAt(0))
             result = (
                 cq.Workplane(plane).circle(op.radius).sweep(path, transition="round")
             )
@@ -62,18 +67,47 @@ def apply_operation(nodes: dict, op: Operation):
         case "translate":
             result = inputs[0].translate(op.vector)
         case "rotate":
-            result = inputs[0].rotate((0, 0, 0), op.vector, op.angle)
+            result = inputs[0].rotate(
+                op.origin, tuple(a + b for a, b in zip(op.origin, op.vector)), op.angle
+            )
         case "fillet" | "chamfer":
             edges = (
-                inputs[0].edges() if op.edges == "all" else inputs[0].edges(op.edges)
+                inputs[0].edges(cq.selectors.NearestToPointSelector(op.edge_point))
+                if op.edge_point is not None
+                else (
+                    inputs[0].edges()
+                    if op.edges == "all"
+                    else inputs[0].edges(op.edges)
+                )
             )
             result = (
                 edges.fillet(op.radius)
                 if op.op == "fillet"
                 else edges.chamfer(op.radius)
             )
+        case _:
+            result = apply_feature(inputs, op)
+    solids = result.solids().vals()
+    if not solids or len(solids) > MAX_INSTANCES:
+        raise ValueError(f"Operation must produce 1-{MAX_INSTANCES} solids")
+    if any(not solid.isValid() or solid.Volume() <= 1e-9 for solid in solids):
+        raise ValueError("Operation produced invalid or empty geometry")
+    bounds = result.val().BoundingBox()
+    if max(bounds.xlen, bounds.ylen, bounds.zlen) > 2000:
+        raise ValueError("Intermediate geometry exceeds the 2000 mm limit")
+    if sum(len(node.solids().vals()) for node in nodes.values()) + len(solids) > 2048:
+        raise ValueError("Plan exceeds the 2048 intermediate-solid budget")
     nodes[op.id] = result
     return result
+
+
+def apply_operation(nodes: dict, op: Operation):
+    try:
+        return _construct(nodes, op)
+    except Exception as exc:
+        raise ValueError(
+            f"Operation {op.id} ({op.op}) failed: {str(exc)[:1500]}"
+        ) from exc
 
 
 def build(plan: CADPlan, directory: Path) -> dict:
@@ -125,7 +159,7 @@ def stream_build(directory: Path):
             return finish(plan, nodes, directory)
         op = Operation.model_validate(message["operation"])
         if (
-            len(operations) >= 80
+            len(operations) >= MAX_OPERATIONS
             or op.id in nodes
             or any(ref not in nodes for ref in op.inputs)
         ):
