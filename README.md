@@ -17,7 +17,7 @@ make run
 
 Open **http://127.0.0.1:8000**. Do not overwrite an existing `.env`. `make run` builds the frontend and serves everything from one backend process. `make dev` starts the API on port 8000 and Vite on port 5174 with live frontend updates. Override the frontend port with `DREAMER_FRONTEND_PORT`.
 
-Without an LLM key, select **Try demo**, then **Build demo model**. The four fixed templates generate real STEP/STL files through CadQuery; they do not interpret text or images and are explicitly marked as demos. **Contoured vase** demonstrates a smooth loft with an open top and 2 mm walls.
+Without an LLM key, select **Try demo**, then **Build demo model**. The five fixed templates generate real STEP/STL files through CadQuery; they do not interpret text or images and are explicitly marked as demos. **Contoured vase** demonstrates a smooth loft with an open top and 2 mm walls. **Engraved nameplate** demonstrates repeated mounting holes, recessed lettering, and raised text.
 
 ## Docker deployment
 
@@ -152,7 +152,62 @@ the base model. Wait for the selected version to finish before sending its next
 change. Existing versions, downloads, and approval hashes remain unchanged.
 Previously attached images are not retained; reattach a reference when needed.
 
-The modeling vocabulary is intended for geometric and functional parts, including curved housings, vases, routed rods, and axisymmetric parts. Organic reconstruction, assemblies, helical threads, and guaranteed dimensional reconstruction from a single photo are not supported. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
+The modeling vocabulary is intended for geometric and functional parts, including curved housings, vases, routed rods, and axisymmetric parts. Organic reconstruction, assemblies, and guaranteed dimensional reconstruction from a single photo are not supported. Helical geometry can represent threads, but does not certify a standard thread fit. Review generated dimensions and assumptions before fabrication. Geometry validation does not certify strength, tolerances, overhangs, or manufacturability.
+
+### Complex features and engraving
+
+Use ordinary prompts such as "engrave DREAMER 0.8 mm deep on the top face," "add
+raised lettering to the side," "repeat six holes around the flange," or "make a
+helical groove with a 4 mm pitch." The model receives the complete operation
+schema, coordinate conventions, and feature examples. Every operation reports its
+ID and type on failure so a repair can target the failing feature. Partial streamed
+operations are retained as repair context. `DREAMER_MODEL_ATTEMPTS` controls total
+attempts (default 3, range 1–5); `DREAMER_CAD_TIMEOUT` controls CAD completion time
+(default 180 seconds, maximum 900). Failed attempts can incur another provider call.
+
+| Operation | Parameters and behavior |
+| --- | --- |
+| `extrude` | `profiles`, `height`, optional `frame` and `taper`. The first profile is an outer boundary; following profiles are holes. |
+| `twist` | Profiles extruded through `height` and rotated by `angle`, up to four turns. |
+| `text` | `text`, `text_size`, `height`, optional `font` and `frame`; generates solid glyphs for later union or subtraction. |
+| `engrave` / `emboss` | One body input, positive `depth`, and either `text` + `text_size` or `profiles`. Cut inward or grow outward from a selected planar face. |
+| `linear_pattern` | Repeat one input with `count` and a step `vector`, including the original. |
+| `polar_pattern` | Repeat around `origin` and axis `vector`, over `angle`. Full circles omit the duplicate endpoint; partial arcs include both ends. |
+| `mirror` | Reflect one input across `frame.origin` and `frame.normal`. |
+| `scale` | Uniformly scale one input by `factor` around `origin`. |
+| `split` | Clip one input with `frame`; `keep` selects `top` or `bottom` relative to its normal. |
+| `helix` | `radius`, `pitch`, `height`, optional `lefthand` and `frame`; use `wire_radius` for a coil or `profiles` for a radial/axial thread section. |
+
+A frame defines an origin, normal, and optional nonparallel `x_direction`; omitted
+frames use XY. Profiles support circles, rectangles, and closed paths with line,
+three-point arc, and interpolated spline segments. Paths close back to `start`.
+Custom outlines can form logos, pockets, and geometric relief; holes must remain
+inside their outer boundary. Raster images are references for the model, not an
+automatic vector-tracing or photogrammetry pipeline.
+
+Markings use `faces` (`>Z`, `<Z`, `>X`, `<X`, `>Y`, `<Y`) and optional `face_index`.
+Only planar faces with the corresponding outward normal are eligible, sorted
+outermost first and then by descending area. The local origin is the selected
+face's bounding-box center; `offset: [u, v]` moves the mark and `angle` rotates it.
+Local X/Y directions are `(+X,+Y)`, `(+X,-Y)`, `(+Y,+Z)`, `(-Y,+Z)`, `(-X,+Z)`, and
+`(+X,+Z)` respectively. Marking operations do not wrap onto curved surfaces;
+position explicit text/profile cutters and combine them with the body instead.
+
+`sweep` also accepts `smooth: true` for an interpolated 3D path. `rotate` accepts
+an arbitrary axis `origin`. Fillets and chamfers accept additional direction/type
+selectors or `edge_point` to select the nearest edge. Helix profile coordinates
+are radial/axial at the start of the helix; keep axial extent below the pitch and
+provide overlap when joining a thread ridge to a shaft.
+
+Plans allow 160 operations, 64 copies per pattern, 256 solids per intermediate,
+and 2,048 total intermediate solids. Disconnected text and pattern cutters are
+allowed during construction, while the final model must remain one valid solid.
+Font options are `auto`, `sans`, `serif`, `mono`, and `cjk`. Docker includes DejaVu
+and Noto CJK fonts. Native Linux installs need `fontconfig`, `fonts-dejavu-core`,
+and `fonts-noto-cjk`. Unsupported glyphs produce an error rather than silent
+replacement characters. Text is limited to 80 characters per operation.
+
+The CAD building blocks follow the [CadQuery API](https://cadquery.readthedocs.io/en/latest/apireference.html).
 
 ### Conversation workspace and preview color
 
@@ -213,7 +268,7 @@ Revolve profiles can describe both sides of a wall in one closed outline.
 Smooth lofts can bulge beyond their section sizes; inspect the final dimensions.
 Shelling can fail when wall thickness exceeds local curvature or feature spacing.
 Self-intersecting profiles and tight sweep turns can also fail in the CAD kernel.
-The existing bounded repair attempt can revise the plan; invalid final solids
+Bounded repair attempts can revise the plan; invalid final solids
 are never offered for slicing. These operations do not provide organic mesh
 generation or automatically blend a sculpted mesh with a precise CAD part.
 

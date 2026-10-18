@@ -56,8 +56,9 @@ class Service:
                 )
                 previous = previous_job["plan"] if previous_job else None
                 failure = None
-                for attempt in range(2):
+                for attempt in range(self.settings.model_attempts):
                     plan = None
+                    cad = None
                     try:
                         directory = self.store.directory(job_id)
                         async with (
@@ -123,8 +124,17 @@ class Service:
                     except Exception as exc:
                         failure = self.error(exc)
                         if plan is not None:
-                            failure += "\nFailed plan: " + plan.model_dump_json()
-                        if request.demo_template or attempt == 1:
+                            failure += "\nFailed plan: " + plan.model_dump_json(
+                                exclude_defaults=True, exclude_none=True
+                            )
+                        elif cad is not None and cad.operations:
+                            failure += "\nPartial attempted operations: " + json.dumps(
+                                cad.operations
+                            )
+                        if (
+                            request.demo_template
+                            or attempt + 1 >= self.settings.model_attempts
+                        ):
                             raise
                         self.store.transition(
                             job_id,

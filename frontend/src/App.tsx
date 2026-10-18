@@ -17,6 +17,7 @@ import {
   Palette,
   Terminal,
   MessageSquare,
+  Type,
   Settings2,
   SlidersHorizontal,
   Sparkles,
@@ -59,6 +60,13 @@ const templates = [
     prompt:
       "Create a smooth open-top vase, 75 mm tall with 2 mm walls. Loft circular sections with radii 22, 28, 16, and 20 mm at heights 0, 20, 50, and 75 mm, then hollow it inward while preserving the base.",
     icon: WandSparkles,
+  },
+  {
+    id: "nameplate",
+    name: "Engraved nameplate",
+    prompt:
+      "Make a 90 x 36 x 4 mm rounded nameplate with two mounting holes. Engrave DREAMER 0.8 mm deep near the top and emboss CAD 0.8 mm high near the bottom.",
+    icon: Type,
   },
 ] as const;
 type Template = (typeof templates)[number]["id"];

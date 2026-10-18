@@ -8,11 +8,75 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Number = Annotated[float, Field(allow_inf_nan=False, ge=-2000, le=2000)]
 Positive = Annotated[float, Field(gt=0, le=1000, allow_inf_nan=False)]
 Vector = tuple[Number, Number, Number]
+MAX_OPERATIONS = 160
+MAX_INSTANCES = 256
+
 HexColor = Annotated[str, Field(pattern=r"^#[0-9a-fA-F]{6}$")]
 
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class Frame(StrictModel):
+    origin: Vector = (0, 0, 0)
+    normal: Vector = (0, 0, 1)
+    x_direction: Vector | None = None
+
+    @model_validator(mode="after")
+    def check_axes(self):
+        a, b = self.normal, self.x_direction
+        if sum(v * v for v in a) < 1e-12:
+            raise ValueError("Frame normal must be nonzero")
+        if b is None:
+            return self
+        cross = (
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        )
+        if sum(v * v for v in cross) < 1e-12:
+            raise ValueError(
+                "Frame normal and x_direction must be nonzero and nonparallel"
+            )
+        return self
+
+
+class CurveSegment(StrictModel):
+    kind: Literal["line", "arc", "spline"] = "line"
+    end: tuple[Number, Number]
+    through: list[tuple[Number, Number]] = Field(default_factory=list, max_length=16)
+
+    @model_validator(mode="after")
+    def check_curve(self):
+        if self.kind == "line" and self.through:
+            raise ValueError("A line uses only end")
+        if self.kind == "arc" and len(self.through) != 1:
+            raise ValueError("An arc needs exactly one through point")
+        if self.kind == "spline" and not self.through:
+            raise ValueError("A spline needs at least one through point")
+        return self
+
+
+class Profile(StrictModel):
+    shape: Literal["circle", "rectangle", "path"]
+    center: tuple[Number, Number] = (0, 0)
+    radius: Positive | None = None
+    size: tuple[Positive, Positive] | None = None
+    start: tuple[Number, Number] | None = None
+    segments: list[CurveSegment] = Field(default_factory=list, max_length=64)
+
+    @model_validator(mode="after")
+    def check_outline(self):
+        if self.shape == "circle":
+            if self.radius is None or self.size or self.start or self.segments:
+                raise ValueError("A circle profile needs radius only")
+        elif self.shape == "rectangle":
+            if self.size is None or self.radius or self.start or self.segments:
+                raise ValueError("A rectangle profile needs size only")
+        elif self.start is None or not self.segments or self.radius or self.size:
+            raise ValueError("A path profile needs start and segments only")
+        return self
 
 
 class LoftSection(StrictModel):
@@ -51,6 +115,17 @@ class Operation(StrictModel):
         "revolve",
         "sweep",
         "shell",
+        "extrude",
+        "twist",
+        "text",
+        "engrave",
+        "emboss",
+        "linear_pattern",
+        "polar_pattern",
+        "mirror",
+        "scale",
+        "helix",
+        "split",
     ]
     inputs: list[str] = Field(default_factory=list, max_length=16)
     size: tuple[Positive, Positive, Positive] | None = None
@@ -59,16 +134,48 @@ class Operation(StrictModel):
     points: list[tuple[Number, Number]] = Field(default_factory=list, max_length=64)
     vector: Vector = (0, 0, 0)
     angle: Number = 0
-    edges: Literal["all", "|Z", "|X", "|Y", ">Z", "<Z"] = "all"
+    edges: Literal[
+        "all", "|Z", "|X", "|Y", ">Z", "<Z", ">X", "<X", ">Y", "<Y", "%Circle", "%Line"
+    ] = "all"
     sections: list[LoftSection] = Field(default_factory=list, max_length=12)
     ruled: bool = False
     path: list[Vector] = Field(default_factory=list, max_length=32)
     thickness: Positive | None = None
     faces: Literal[">Z", "<Z", ">X", "<X", ">Y", "<Y"] = ">Z"
 
+    frame: Frame = Field(default_factory=Frame)
+    profiles: list[Profile] = Field(default_factory=list, max_length=12)
+    taper: Annotated[float, Field(ge=-60, le=60, allow_inf_nan=False)] = 0
+    text: str | None = Field(default=None, min_length=1, max_length=80)
+    text_size: Positive | None = None
+    font: Literal["auto", "sans", "serif", "mono", "cjk"] = "auto"
+    depth: Positive | None = None
+    offset: tuple[Number, Number] = (0, 0)
+    face_index: int = Field(default=0, ge=0, le=255)
+    count: int = Field(default=1, ge=1, le=64)
+    origin: Vector = (0, 0, 0)
+    factor: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] | None = None
+    pitch: Positive | None = None
+    wire_radius: Positive | None = None
+    lefthand: bool = False
+    smooth: bool = False
+    keep: Literal["top", "bottom"] = "top"
+    edge_point: Vector | None = None
+
     @model_validator(mode="after")
     def check_parameters(self):
         counts = {
+            "extrude": 0,
+            "twist": 0,
+            "text": 0,
+            "helix": 0,
+            "engrave": 1,
+            "emboss": 1,
+            "linear_pattern": 1,
+            "polar_pattern": 1,
+            "mirror": 1,
+            "scale": 1,
+            "split": 1,
             "box": 0,
             "cylinder": 0,
             "sphere": 0,
@@ -90,6 +197,13 @@ class Operation(StrictModel):
         elif len(self.inputs) != counts[self.op]:
             raise ValueError(f"{self.op} needs {counts[self.op]} inputs")
         required = {
+            "extrude": ["height"],
+            "twist": ["height"],
+            "text": ["text", "text_size", "height"],
+            "engrave": ["depth"],
+            "emboss": ["depth"],
+            "scale": ["factor"],
+            "helix": ["radius", "pitch", "height"],
             "box": ["size"],
             "cylinder": ["radius", "height"],
             "sphere": ["radius"],
@@ -102,6 +216,50 @@ class Operation(StrictModel):
         for key in required.get(self.op, []):
             if getattr(self, key) is None:
                 raise ValueError(f"{self.op} requires {key}")
+        if self.op in {"extrude", "twist"} and not self.profiles:
+            raise ValueError(
+                f"{self.op} requires profiles: outer boundary followed by holes"
+            )
+        if self.op == "twist" and (not self.angle or abs(self.angle) > 1440):
+            raise ValueError("twist requires a nonzero angle within +/-1440 degrees")
+        if self.op in {"engrave", "emboss"}:
+            if bool(self.text) == bool(self.profiles):
+                raise ValueError(
+                    f"{self.op} requires either text or profiles, exclusively"
+                )
+            if self.text and not self.text_size:
+                raise ValueError("Text marking requires text_size")
+        if self.text is not None and (
+            not self.text.strip() or any(ord(c) < 32 for c in self.text)
+        ):
+            raise ValueError(
+                "Text must be a nonblank single line without control characters"
+            )
+        if self.op in {"linear_pattern", "polar_pattern"} and self.count < 2:
+            raise ValueError(
+                "Patterns require at least two instances, including the original"
+            )
+        if self.op == "linear_pattern" and self.vector == (0, 0, 0):
+            raise ValueError("Linear pattern step vector must be nonzero")
+        if self.op == "polar_pattern" and (
+            self.vector == (0, 0, 0) or not 0 < self.angle <= 360
+        ):
+            raise ValueError(
+                "Polar pattern needs a nonzero axis vector and 0 < angle <= 360"
+            )
+        if self.op == "helix":
+            if bool(self.wire_radius) == bool(self.profiles):
+                raise ValueError(
+                    "Helix needs either wire_radius or profiles, exclusively"
+                )
+            if self.height / self.pitch > 64:
+                raise ValueError("Helix is limited to 64 turns")
+            if self.wire_radius and (
+                2 * self.wire_radius >= self.pitch or self.wire_radius >= self.radius
+            ):
+                raise ValueError(
+                    "Helix wire diameter must be smaller than pitch and wire radius smaller than helix radius"
+                )
         if self.op == "polygon" and len(self.points) < 3:
             raise ValueError("polygon needs at least three points")
         if self.op == "rotate" and self.vector == (0, 0, 0):
@@ -141,7 +299,7 @@ class CADPlan(StrictModel):
     name: str = Field(min_length=1, max_length=100)
     description: str = Field(max_length=2000)
     assumptions: list[str] = Field(default_factory=list, max_length=20)
-    operations: list[Operation] = Field(min_length=1, max_length=80)
+    operations: list[Operation] = Field(min_length=1, max_length=MAX_OPERATIONS)
     result: str
     color: HexColor | None = None
 
@@ -173,7 +331,9 @@ class GenerateRequest(StrictModel):
     prompt: str = Field(min_length=1, max_length=8000)
     images: list[str] = Field(default_factory=list, max_length=3)
     parent_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
-    demo_template: Literal["organizer", "bracket", "planter", "vase"] | None = None
+    demo_template: (
+        Literal["organizer", "bracket", "planter", "vase", "nameplate"] | None
+    ) = None
 
     @model_validator(mode="after")
     def validate_images(self):

@@ -30,7 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install CAD runtime libraries
-        run: sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa fontconfig fonts-dejavu-core fonts-noto-cjk
       - name: Install dependencies
         run: |
           uv sync --locked --python 3.12

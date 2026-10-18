@@ -2,7 +2,52 @@ from .schema import CADPlan
 
 
 def example_plan(template: str) -> CADPlan:
-    if template == "bracket":
+    if template == "nameplate":
+        operations = [
+            {"id": "base", "op": "box", "size": [90, 36, 4]},
+            {
+                "id": "rounded",
+                "op": "fillet",
+                "inputs": ["base"],
+                "radius": 4,
+                "edges": "|Z",
+            },
+            {"id": "hole", "op": "cylinder", "radius": 2, "height": 6},
+            {
+                "id": "first_hole",
+                "op": "translate",
+                "inputs": ["hole"],
+                "vector": [-37, 0, -1],
+            },
+            {
+                "id": "holes",
+                "op": "linear_pattern",
+                "inputs": ["first_hole"],
+                "count": 2,
+                "vector": [74, 0, 0],
+            },
+            {"id": "plate", "op": "cut", "inputs": ["rounded", "holes"]},
+            {
+                "id": "label",
+                "op": "engrave",
+                "inputs": ["plate"],
+                "text": "DREAMER",
+                "text_size": 8,
+                "depth": 0.8,
+                "offset": [0, 3],
+            },
+            {
+                "id": "result",
+                "op": "emboss",
+                "inputs": ["label"],
+                "text": "CAD",
+                "text_size": 5,
+                "depth": 0.8,
+                "offset": [0, -8],
+            },
+        ]
+        name = "Engraved nameplate"
+    elif template == "bracket":
         operations = [
             {"id": "base", "op": "box", "size": [60, 40, 5]},
             {"id": "wall", "op": "box", "size": [60, 5, 45]},

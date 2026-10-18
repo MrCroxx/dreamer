@@ -183,6 +183,53 @@ def main():
             assert exc.code == 503
         else:
             raise AssertionError("Printing must remain disabled")
+        # Exercise text fonts and markings in the same read-only runtime used for deployment.
+        plate = json.loads(
+            request(
+                "/api/jobs",
+                {"prompt": "Engraved plate smoke test", "demo_template": "nameplate"},
+            )
+        )
+        plate_endpoint = "/api/jobs/" + plate["id"]
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
+            plate = json.loads(request(plate_endpoint))
+            if plate["state"] == "preview":
+                break
+            assert plate["state"] != "failed", plate.get("error")
+            time.sleep(0.5)
+        assert plate["state"] == "preview", plate
+        assert plate["geometry"]["dimensions"] == [90, 36, 4.8]
+        assert {"engrave", "emboss", "linear_pattern"} <= {
+            op["op"] for op in plate["plan"]["operations"]
+        }
+        request(
+            plate_endpoint + "/slice",
+            {"confirmed": True, "artifact_sha256": plate["model_sha256"]},
+        )
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            plate = json.loads(request(plate_endpoint))
+            if plate["state"] == "sliced":
+                break
+            assert not plate.get("error"), plate.get("error")
+            time.sleep(0.5)
+        assert plate["state"] == "sliced", plate
+        assert len(request(plate_endpoint + "/files/print.gcode.3mf")) > 1000
+        subprocess.run(
+            [
+                "docker",
+                "exec",
+                name,
+                "python",
+                "-c",
+                "from dreamer.cad_worker import apply_operation; from dreamer.schema import Operation; "
+                "shape = apply_operation({}, Operation(id='glyph', op='text', text=chr(0x68A6)+chr(0x60F3), text_size=8, height=1)); "
+                "assert sum(s.Volume() for s in shape.solids().vals()) > 1",
+            ],
+            check=True,
+            capture_output=True,
+        )
         uid = subprocess.check_output(
             ["docker", "exec", name, "id", "-u"], text=True
         ).strip()
