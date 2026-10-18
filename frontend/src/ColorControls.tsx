@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Palette, RotateCcw } from "lucide-react";
+import { Check, RotateCcw } from "lucide-react";
 
 const colors = [
   ["Terracotta", "#dd7652"],
@@ -29,11 +29,9 @@ export function ColorControls({
   }
   return (
     <div className="appearance-controls">
-      <div className="appearance-title">
-        <Palette size={15} />
-        <strong>Preview color</strong>
-        <span>Uses loaded filament when printed</span>
-      </div>
+      <p className="appearance-note">
+        Preview only. Printing uses the loaded filament.
+      </p>
       <div
         className="appearance-options"
         role="group"
@@ -63,7 +61,6 @@ export function ColorControls({
             disabled={disabled}
             onChange={(event) => preview(event.target.value)}
           />
-          Custom
         </label>
         {dirty && (
           <div className="color-save">
@@ -88,11 +85,6 @@ export function ColorControls({
           </div>
         )}
       </div>
-      {dirty && (
-        <p className="color-draft-note" role="status">
-          Unsaved preview · Save as a new version to keep this color.
-        </p>
-      )}
     </div>
   );
 }

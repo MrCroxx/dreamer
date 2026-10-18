@@ -292,22 +292,13 @@ export function Viewer({
               ? "Creating your model"
               : "Your build plate"}
         </span>
-        <span className="unit-label">MILLIMETERS</span>
       </div>
       {!modelHash && !busy && (
         <div className="viewer-empty">
           <div className="empty-symbol">
             <Box size={35} strokeWidth={1} />
           </div>
-          <h2>
-            A little idea.
-            <br />A real-world thing.
-          </h2>
-          <p>
-            Describe what you have in mind.
-            <br />
-            Your next creation starts here.
-          </p>
+          <h2>Model preview</h2>
         </div>
       )}
       {busy && !loaded && (
@@ -315,8 +306,8 @@ export function Viewer({
           <div className="building-orbit">
             <Box size={36} strokeWidth={1.4} />
           </div>
-          <h2>Giving your idea shape.</h2>
-          <p>Completed steps will appear here as the model takes shape.</p>
+          <h2>Building model…</h2>
+          <p>Preview updates as geometry is built.</p>
         </div>
       )}
       {error && (
@@ -330,10 +321,6 @@ export function Viewer({
         </div>
       )}
       <div className="viewer-bottom">
-        <span className="plate-label">
-          A1 MINI <span> / </span>
-          {width} × {depth} mm
-        </span>
         <div className="viewer-tools">
           <button
             title="Reset view"
@@ -378,10 +365,6 @@ export function Viewer({
             <Expand size={16} />
           </button>
         </div>
-      </div>
-      <div className="orbit-hint">
-        Drag to orbit <span>·</span> Scroll to zoom <span>·</span> Right-drag to
-        pan
       </div>
     </div>
   );

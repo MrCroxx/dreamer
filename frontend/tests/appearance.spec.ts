@@ -91,6 +91,9 @@ test("preview colors preserve the canvas, save as versions, and survive refresh 
   const canvas = page.locator("canvas");
   await canvas.evaluate((element) => (element.dataset.identity = "stable"));
   await page.getByRole("button", { name: "Toggle wireframe" }).click();
+  await page
+    .getByRole("button", { name: "Preview color", exact: true })
+    .click();
   await page.getByRole("button", { name: "Preview in Blue" }).click();
   await expect(page.locator(".viewer-canvas")).toHaveAttribute(
     "data-color",
@@ -138,6 +141,9 @@ test("preview colors preserve the canvas, save as versions, and survive refresh 
   await expect(input).toBeVisible();
   await page.getByRole("tab", { name: "3D preview" }).click();
   await expect(input).not.toBeVisible();
+  await page
+    .getByRole("button", { name: "Preview color", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Preview in Blue" }),
   ).toHaveAttribute("aria-pressed", "true");
@@ -161,4 +167,51 @@ test("preview colors preserve the canvas, save as versions, and survive refresh 
     .boundingBox();
   expect(sendBounds!.y + sendBounds!.height).toBeLessThanOrEqual(568);
   await expect(input).toBeVisible();
+  for (const [width, height] of [
+    [1440, 800],
+    [1024, 768],
+    [768, 600],
+    [640, 400],
+    [390, 844],
+    [390, 568],
+    [320, 568],
+  ]) {
+    await page.setViewportSize({ width, height });
+    if (width <= 760)
+      await page.getByRole("tab", { name: "3D preview" }).click();
+    const viewer = page.locator(".viewer-shell");
+    const before = await viewer.boundingBox();
+    expect(before!.height).toBeGreaterThan(height < 500 ? 100 : 250);
+    const action = await page
+      .getByRole("button", { name: "Approve & slice" })
+      .boundingBox();
+    expect(action!.y + action!.height).toBeLessThanOrEqual(height);
+    expect(action!.x + action!.width).toBeLessThanOrEqual(width);
+    expect(
+      await page
+        .locator(".preview-panel")
+        .evaluate((element) => element.scrollHeight <= element.clientHeight),
+    ).toBe(true);
+    await page
+      .getByRole("button", { name: "Model details", exact: true })
+      .click();
+    await expect(
+      page.getByRole("region", { name: "Model details", exact: true }),
+    ).toBeVisible();
+    expect(await viewer.boundingBox()).toEqual(before);
+    await page.getByRole("button", { name: "CAD plan", exact: true }).click();
+    await expect(page.locator(".cad-content")).toContainText("operations");
+    await page.keyboard.press("Escape");
+    await expect(
+      page.getByRole("button", { name: "Model details", exact: true }),
+    ).toBeFocused();
+    await expect(page.locator(".tool-panel")).toHaveCount(0);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollHeight <= innerHeight &&
+          document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  }
 });

@@ -67,7 +67,10 @@ test("optional output streams text safely, stops polling when closed, and replay
     return route.fulfill({ status: 404 });
   });
   await page.goto(`/?job=${id}`);
-  const toggle = page.getByRole("button", { name: "Model output Optional" });
+  const toggle = page.getByRole("button", {
+    name: "Model output",
+    exact: true,
+  });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await page.waitForTimeout(1100);
   expect(reads).toBe(0);
